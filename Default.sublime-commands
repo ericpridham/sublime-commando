@@ -1,0 +1,12 @@
+[
+  // Git
+   { "caption": "Git: Status",    "command": "git_status" }
+  ,{ "caption": "Git: Diff File", "command": "git_diff" }
+  ,{ "caption": "Git: Diff All",  "command": "git_diff_all" }
+  ,{ "caption": "Git: Add",       "command": "git_add" }
+  ,{ "caption": "Git: Reset",     "command": "git_reset" }
+  ,{ "caption": "Git: Commit",    "command": "git_commit" }
+
+  // Meta
+  ,{ "caption": "Git Plugin: Update Self", "command": "git_plugin_update"}
+]
