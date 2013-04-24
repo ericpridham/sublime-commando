@@ -223,13 +223,14 @@ class GitPluginUpdateCommand(CommandoRepoCommand):
     self.git(['tag', '-l'], self.tags_list_done)
 
   def tags_list_done(self, results):
-    tags = results.rstrip().split("\n")
-    tags.reverse()
-    latest_tag = tags[0]
-    self.git(['checkout', 'tags/'+latest_tag], self.update_done)
+    if results.rstrip():
+      tags = results.rstrip().split("\n")
+      tags.reverse()
+      latest_tag = tags[0]
+      self.git(['checkout', 'tags/'+latest_tag], self.update_done)
   
   def update_done(self, results):
     self.git(['describe', '--abbrev=0', '--always'], self.current_version_done)
 
   def current_version_done(self, version):
-    self.panel('Commando plugin version: ' + version.rstrip())
+    self.panel('Commando version: ' + version.rstrip())
