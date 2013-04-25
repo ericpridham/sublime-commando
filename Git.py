@@ -80,7 +80,7 @@ class GitShowVersionCommand(GitFileCommand):
   
   def branch_done(self, results):
     self.cur_branch = None
-    for i in results.rstrip().split("\n"):
+    for i in results.splitlines():
       if '*' in i:
         self.cur_branch = i.replace('*', '').strip()
     
@@ -92,8 +92,13 @@ class GitShowVersionCommand(GitFileCommand):
   def tag_latest_done(self, results):
     if results.rstrip():
       self.cur_tag = results.rstrip().replace('refs/tags/', '')
-      self.active_view().set_status('git_status',
+      self.status('git_status',
         'git: v%s [%s]' % (self.cur_tag, self.cur_branch))
+
+class GitWindowShowVersionCommand(GitRepoCommand):
+  def run(self):
+    for view in self.get_window().views():
+      view.run_command('git_show_version')
 
 class GitStatusCommand(GitRepoCommand):
   def description(self):
@@ -104,7 +109,7 @@ class GitStatusCommand(GitRepoCommand):
 
   def status_done(self, output):
     if output.rstrip() != '':
-      self.statuses = output.rstrip().split("\n")
+      self.statuses = output.splitlines()
       self.select(self.statuses, self.status_selected, sublime.MONOSPACE_FONT)
 
   def status_selected(self, selected):
@@ -140,6 +145,14 @@ class GitResetCommand(GitFileCommand):
   def run(self, edit):
     self.git(['reset', '-q', 'HEAD', self.view.file_name()])
     sublime.status_message("Reset " + self.view.file_name())
+
+class GitStashCommand(GitRepoCommand):
+  def run(self):
+    self.git(['stash'])
+
+class GitStashPopCommand(GitRepoCommand):
+  def run(self):
+    self.git(['stash', 'pop'])
 
 class GitCommitCommand(GitRepoCommand):
   def run(self):
@@ -203,17 +216,53 @@ class GitPullCommand(GitRepoCommand):
       if output != 'Already up-to-date.':
         message += '\n' + output
     self.panel(message)
+    self.window.run_command('git_window_show_version')
 
-class GitLogCommand(GitRepoCommand):
-  def run(self):
-    self.git(['log', '--format=%s\aby %an on %ad (%ar)\a%H', '--date=local'], self.log_done)
+class GitLog:
+  def file_name(self):
+    try:
+      return self.view.file_name()
+    except AttributeError:
+      return ''
+
+  def run(self, edit = None):
+    self.git(['log', '--format=%s\aby %an on %ad (%ar)\a%H', '--date=local', '--', self.file_name()], self.log_done)
 
   def log_done(self, output):
-    logs = [x.split('\a', 2) for x in output.rstrip().split('\n')]
-    self.select(logs, self.log_selected)
+    self.logs = [x.split('\a', 2) for x in output.splitlines()]
+    display_logs = [x[:2] for x in self.logs]
+    self.select(display_logs, self.log_selected)
 
-  def log_selected(self, selection):
-    pass
+  def log_selected(self, selected):
+    if 0 <= selected < len(self.logs):
+      self.git(['log', '-p', '-1', self.logs[selected][2], '--', self.file_name()], self.display_log)
+
+  def display_log(self, output):
+    self.scratch(output, 'Git Log Details', 'Diff')
+
+class GitLogCommand(GitLog, GitFileCommand):
+  pass
+
+class GitLogAllCommand(GitLog, GitRepoCommand):
+  pass
+
+class GitBranchCommand(GitRepoCommand):
+  def run(self):
+    self.git(['branch', '--no-color'], self.branch_done)
+
+  def branch_done(self, output):
+    self.branches = [ b.strip() for b in output.splitlines() ]
+    self.select(self.branches, self.branch_selected, sublime.MONOSPACE_FONT)
+
+  def branch_selected(self, selected):
+    if 0 <= selected < len(self.branches):
+      selected_branch = self.branches[selected]
+      if not selected_branch.startswith("*"):
+        self.git(['checkout', selected_branch], self.checkout_done)
+  
+  def checkout_done(self, output):
+    self.panel(output)
+    self.window.run_command('git_window_show_version')
 
 #    
 # Flow
@@ -224,14 +273,14 @@ class GitFlowInitCommand(GitRepoCommand):
   
   def init_done(self, output):
     self.panel(output)
-    self.window.run_command('git_set_window_status')
+    self.window.run_command('git_window_show_version')
 
 class GitFlowHotfixStartCommand(GitRepoCommand):
   def run(self):
     self.git(['status', '--porcelain'], self.status_done)
 
   def status_done(self, output):
-    uncommitted = [x for x in output.rstrip().split("\n") if x and x[0] != '?']
+    uncommitted = [x for x in output.splitlines() if x and x[0] != '?']
     if uncommitted:
       self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
     else:
@@ -246,7 +295,7 @@ class GitFlowHotfixStartCommand(GitRepoCommand):
   
   def hotfix_start_done(self, output):
     self.panel(output)
-    self.window.run_command('git_set_window_status')
+    self.window.run_command('git_window_show_version')
 
 class GitFlowHotfixFinish(GitRepoCommand):
   def run(self):
@@ -256,7 +305,7 @@ class GitFlowHotfixFinish(GitRepoCommand):
     if 'No hotfix branches exist.' in output:
       self.panel(output)
     else:
-      self.hotfixes = [x.replace('*','').strip() for x in output.rstrip().split('\n')]
+      self.hotfixes = [x.replace('*','').strip() for x in output.splitlines()]
       self.select(self.hotfixes, self.hotfix_selected, sublime.MONOSPACE_FONT)
 
   def hotfix_selected(self, selected):
@@ -267,7 +316,7 @@ class GitFlowHotfixFinish(GitRepoCommand):
   
   def hotfix_finish_done(self, output):
     self.panel(output)
-    self.window.run_command('git_set_window_status')
+    self.window.run_command('git_window_show_version')
 
 class GitFlowHotfixPublishCommand(GitRepoCommand):
   def run(self):
@@ -277,7 +326,7 @@ class GitFlowHotfixPublishCommand(GitRepoCommand):
     if 'No hotfix branches exist.' in output:
       self.panel(output)
     else:
-      self.hotfixes = [x.replace('*','').strip() for x in output.rstrip().split('\n')]
+      self.hotfixes = [x.replace('*','').strip() for x in output.splitlines()]
       self.select(self.hotfixes, self.hotfix_selected, sublime.MONOSPACE_FONT)
 
   def hotfix_selected(self, selected):
@@ -286,7 +335,7 @@ class GitFlowHotfixPublishCommand(GitRepoCommand):
   
   def hotfix_publish_done(self, output):
     self.panel(output)
-    self.window.run_command('git_set_window_status')
+    self.window.run_command('git_window_show_version')
 
 class GitFlowHotfixTrackCommand(GitRepoCommand):
   def run(self):
@@ -294,7 +343,7 @@ class GitFlowHotfixTrackCommand(GitRepoCommand):
 
   def branch_done(self, output):
     self.hotfixes = [i.replace('origin/hotfix/', 'Hotfix ').strip()
-      for i in output.rstrip().split('\n') if i.find('origin/hotfix/') != -1]
+      for i in output.splitlines() if i.find('origin/hotfix/') != -1]
     if self.hotfixes:
       self.select(self.hotfixes, self.hotfix_selected, sublime.MONOSPACE_FONT)
     else:
@@ -307,14 +356,14 @@ class GitFlowHotfixTrackCommand(GitRepoCommand):
   
   def hotfix_track_done(self, output):
     self.panel(results)
-    self.window.run_command('git_set_window_status')
+    self.window.run_command('git_window_show_version')
 
 class GitFlowReleaseStartCommand(GitRepoCommand):
   def run(self):
     self.git(['status', '--porcelain'], self.status_done)
 
   def status_done(self, output):
-    uncommitted = [x for x in output.rstrip().split("\n") if x and x[0] != '?']
+    uncommitted = [x for x in output.splitlines() if x and x[0] != '?']
     if uncommitted:
       self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
     else:
@@ -329,7 +378,7 @@ class GitFlowReleaseStartCommand(GitRepoCommand):
   
   def release_start_done(self, output):
     self.panel(output)
-    self.window.run_command('git_set_window_status')
+    self.window.run_command('git_window_show_version')
 
 class GitFlowReleaseFinish(GitRepoCommand):
   def run(self):
@@ -339,7 +388,7 @@ class GitFlowReleaseFinish(GitRepoCommand):
     if 'No release branches exist.' in output:
       self.panel(output)
     else:
-      self.releases = [x.replace('*','').strip() for x in output.rstrip().split('\n')]
+      self.releases = [x.replace('*','').strip() for x in output.splitlines()]
       self.select(self.releases, self.release_selected, sublime.MONOSPACE_FONT)
 
   def release_selected(self, selected):
@@ -350,7 +399,7 @@ class GitFlowReleaseFinish(GitRepoCommand):
   
   def release_finish_done(self, output):
     self.panel(output)
-    self.window.run_command('git_set_window_status')
+    self.window.run_command('git_window_show_version')
 
 class GitFlowReleasePublishCommand(GitRepoCommand):
   def run(self):
@@ -360,7 +409,7 @@ class GitFlowReleasePublishCommand(GitRepoCommand):
     if 'No release branches exist.' in output:
       self.panel(output)
     else:
-      self.releases = [x.replace('*','').strip() for x in output.rstrip().split('\n')]
+      self.releases = [x.replace('*','').strip() for x in output.splitlines()]
       self.select(self.releases, self.release_selected, sublime.MONOSPACE_FONT)
 
   def release_selected(self, selected):
@@ -369,7 +418,7 @@ class GitFlowReleasePublishCommand(GitRepoCommand):
   
   def release_publish_done(self, output):
     self.panel(output)
-    self.window.run_command('git_set_window_status')
+    self.window.run_command('git_window_show_version')
 
 class GitFlowReleaseTrackCommand(GitRepoCommand):
   def run(self):
@@ -377,7 +426,7 @@ class GitFlowReleaseTrackCommand(GitRepoCommand):
 
   def branch_done(self, output):
     self.releases = [i.replace('origin/release/', 'Release ').strip()
-      for i in output.rstrip().split('\n') if i.find('origin/release/') != -1]
+      for i in output.splitlines() if i.find('origin/release/') != -1]
     if self.releases:
       self.select(self.releases, self.release_selected, sublime.MONOSPACE_FONT)
     else:
@@ -390,7 +439,7 @@ class GitFlowReleaseTrackCommand(GitRepoCommand):
   
   def release_track_done(self, output):
     self.panel(results)
-    self.window.run_command('git_set_window_status')
+    self.window.run_command('git_window_show_version')
 
 #
 # Meta
@@ -404,7 +453,7 @@ class GitPluginUpdateCommand(CommandoRepoCommand):
 
   def tags_list_done(self, results):
     if results.rstrip():
-      tags = results.rstrip().split("\n")
+      tags = results.splitlines()
       tags.reverse()
       latest_tag = tags[0]
       self.git(['checkout', 'tags/'+latest_tag], self.update_done)
