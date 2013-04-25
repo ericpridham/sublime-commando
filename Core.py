@@ -24,7 +24,7 @@ class CommandThread(threading.Thread):
         output = "Working directory not found!"
         error = True
     except subprocess.CalledProcessError as e:
-      output = '> ' + ' '.join(e.cmd) + '\n' + e.output.decode('utf-8')
+      output = '$ ' + ' '.join(e.cmd) + '\n' + e.output.decode('utf-8')
       error = True
     # except:
     #   output = "Other Error!"
