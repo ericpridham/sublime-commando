@@ -1,0 +1,23 @@
+[
+  // Git
+   { "caption": "Git: Status",    "command": "git_status" }
+  ,{ "caption": "Git: Diff File", "command": "git_diff" }
+  ,{ "caption": "Git: Diff All",  "command": "git_diff_all" }
+  ,{ "caption": "Git: Add",       "command": "git_add" }
+  ,{ "caption": "Git: Reset",     "command": "git_reset" }
+  ,{ "caption": "Git: Commit",    "command": "git_commit" }
+
+  // Git Flow
+  ,{ "caption": "Git Flow: Init",            "command": "git_flow_init" }
+  ,{ "caption": "Git Flow: Hotfix Start",    "command": "git_flow_hotfix_start" }
+  ,{ "caption": "Git Flow: Hotfix Finish",   "command": "git_flow_hotfix_finish" }
+  ,{ "caption": "Git Flow: Hotfix Publish",  "command": "git_flow_hotfix_publish" }
+  ,{ "caption": "Git Flow: Hotfix Track",    "command": "git_flow_hotfix_track" }
+  ,{ "caption": "Git Flow: Release Start",   "command": "git_flow_release_start" }
+  ,{ "caption": "Git Flow: Release Finish",  "command": "git_flow_release_finish" }
+  ,{ "caption": "Git Flow: Release Publish", "command": "git_flow_release_publish" }
+  ,{ "caption": "Git Flow: Release Track",   "command": "git_flow_release_track" }
+
+  // Meta
+  ,{ "caption": "Git Plugin: Update Self", "command": "git_plugin_update"}
+]
