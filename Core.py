@@ -23,8 +23,8 @@ class CommandThread(threading.Thread):
       else:
         output = "Working directory not found!"
         error = True
-    except subprocess.CalledProcessError:
-      output = "Command failed!"
+    except subprocess.CalledProcessError as e:
+      output = '> ' + ' '.join(e.cmd) + '\n' + e.output.decode('utf-8')
       error = True
     # except:
     #   output = "Other Error!"
@@ -73,7 +73,7 @@ class Command:
 
   def on_output(self, output, error = None):
     if error:
-      self.panel('Error: '+output)
+      self.panel('Error\n-----\n'+output)
     elif self.callback is not None:
       self.callback(output)
 

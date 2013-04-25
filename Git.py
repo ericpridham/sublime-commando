@@ -2,6 +2,7 @@ import sublime, sublime_plugin
 import Commando.Core as CC
 import os.path
 import time
+import re
 
 PLUGIN_PATH = None
 def plugin_loaded():
@@ -20,7 +21,9 @@ class GitCommand(CC.Command):
     return False
 
   def git(self, params, callback = None):
-    self.exec_command("git", params, callback)
+    s = sublime.load_settings("Git.sublime-settings")
+    cmd = s.get('git_binary', 'git')
+    self.exec_command(cmd, params, callback)
 
   def is_enabled(self):
     return True if self.get_working_dir() is not None else False
@@ -211,6 +214,183 @@ class GitLogCommand(GitRepoCommand):
 
   def log_selected(self, selection):
     pass
+
+#    
+# Flow
+#
+class GitFlowInitCommand(GitRepoCommand):
+  def run(self):
+    self.git(['flow', 'init'], self.init_done)
+  
+  def init_done(self, output):
+    self.panel(output)
+    self.window.run_command('git_set_window_status')
+
+class GitFlowHotfixStartCommand(GitRepoCommand):
+  def run(self):
+    self.git(['status', '--porcelain'], self.status_done)
+
+  def status_done(self, output):
+    uncommitted = [x for x in output.rstrip().split("\n") if x[0] != '?']
+    if uncommitted:
+      self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
+    else:
+      self.prompt("git flow hotfix start", "", self.hotfix_entered, None, None)
+
+  def hotfix_entered(self, user_input):
+    hotfix = str(user_input)
+    if re.search('^[0-9.]+$', hotfix):
+      self.git(['flow', 'hotfix', 'start', hotfix], self.hotfix_start_done)
+    else:
+      self.panel("Invalid hotfix name")
+  
+  def hotfix_start_done(self, output):
+    self.panel(output)
+    self.window.run_command('git_set_window_status')
+
+class GitFlowHotfixFinish(GitRepoCommand):
+  def run(self):
+    self.git(['flow', 'hotfix', 'list'], self.hotfix_list_done)
+
+  def hotfix_list_done(self, output):
+    if 'No hotfix branches exist.' in output:
+      self.panel(output)
+    else:
+      self.hotfixes = [x.replace('*','').strip() for x in output.rstrip().split('\n')]
+      self.select(self.hotfixes, self.hotfix_selected, sublime.MONOSPACE_FONT)
+
+  def hotfix_selected(self, selected):
+    if 0 <= selected < len(self.hotfixes):
+      selected_hotfix = self.hotfixes[selected]
+      self.git(['flow', 'hotfix', 'finish',
+        '-m', 'Hotfix ' + selected_hotfix, selected_hotfix], self.hotfix_finish_done)
+  
+  def hotfix_finish_done(self, output):
+    self.panel(output)
+    self.window.run_command('git_set_window_status')
+
+class GitFlowHotfixPublishCommand(GitRepoCommand):
+  def run(self):
+    self.git(['flow', 'hotfix', 'list'], self.hotfix_list_done)
+
+  def hotfix_list_done(self, output):
+    if 'No hotfix branches exist.' in output:
+      self.panel(output)
+    else:
+      self.hotfixes = [x.replace('*','').strip() for x in output.rstrip().split('\n')]
+      self.select(self.hotfixes, self.hotfix_selected, sublime.MONOSPACE_FONT)
+
+  def hotfix_selected(self, selected):
+    if 0 <= selected < len(self.hotfixes):
+      self.git(['flow', 'hotfix', 'publish', self.hotfixes[selected]], self.hotfix_publish_done)
+  
+  def hotfix_publish_done(self, output):
+    self.panel(output)
+    self.window.run_command('git_set_window_status')
+
+class GitFlowHotfixTrackCommand(GitRepoCommand):
+  def run(self):
+    self.git(['branch', '-r', '--no-color'], self.branch_done)
+
+  def branch_done(self, output):
+    self.hotfixes = [i.replace('origin/hotfix/', 'Hotfix ').strip()
+      for i in output.rstrip().split('\n') if i.find('origin/hotfix/') != -1]
+    if self.hotfixes:
+      self.select(self.hotfixes, self.hotfix_selected, sublime.MONOSPACE_FONT)
+    else:
+      self.panel('No remote hotfixes exist.')
+
+  def hotfix_selected(self, selected):
+    if 0 <= selected < len(self.hotfixes):
+      selected_hotfix = self.hotfixes[picked].replace('Hotfix ', '')
+      self.git(['flow', 'hotfix', 'track', selected_hotfix], self.hotfix_track_done)
+  
+  def hotfix_track_done(self, output):
+    self.panel(results)
+    self.window.run_command('git_set_window_status')
+
+class GitFlowReleaseStartCommand(GitRepoCommand):
+  def run(self):
+    self.git(['status', '--porcelain'], self.status_done)
+
+  def status_done(self, output):
+    uncommitted = [x for x in output.rstrip().split("\n") if x[0] != '?']
+    if uncommitted:
+      self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
+    else:
+      self.prompt("git flow release start", "", self.release_entered, None, None)
+
+  def release_entered(self, user_input):
+    release = str(user_input)
+    if re.search('^[0-9.]+$', release):
+      self.git(['flow', 'release', 'start', release], self.release_start_done)
+    else:
+      self.panel("Invalid release name")
+  
+  def release_start_done(self, output):
+    self.panel(output)
+    self.window.run_command('git_set_window_status')
+
+class GitFlowReleaseFinish(GitRepoCommand):
+  def run(self):
+    self.git(['flow', 'release', 'list'], self.release_list_done)
+
+  def release_list_done(self, output):
+    if 'No release branches exist.' in output:
+      self.panel(output)
+    else:
+      self.releases = [x.replace('*','').strip() for x in output.rstrip().split('\n')]
+      self.select(self.releases, self.release_selected, sublime.MONOSPACE_FONT)
+
+  def release_selected(self, selected):
+    if 0 <= selected < len(self.releases):
+      selected_release = self.releases[selected]
+      self.git(['flow', 'release', 'finish',
+        '-m', 'Release ' + selected_release, selected_release], self.release_finish_done)
+  
+  def release_finish_done(self, output):
+    self.panel(output)
+    self.window.run_command('git_set_window_status')
+
+class GitFlowReleasePublishCommand(GitRepoCommand):
+  def run(self):
+    self.git(['flow', 'release', 'list'], self.release_list_done)
+
+  def release_list_done(self, output):
+    if 'No release branches exist.' in output:
+      self.panel(output)
+    else:
+      self.releases = [x.replace('*','').strip() for x in output.rstrip().split('\n')]
+      self.select(self.releases, self.release_selected, sublime.MONOSPACE_FONT)
+
+  def release_selected(self, selected):
+    if 0 <= selected < len(self.releases):
+      self.git(['flow', 'release', 'publish', self.releases[selected]], self.release_publish_done)
+  
+  def release_publish_done(self, output):
+    self.panel(output)
+    self.window.run_command('git_set_window_status')
+
+class GitFlowReleaseTrackCommand(GitRepoCommand):
+  def run(self):
+    self.git(['branch', '-r', '--no-color'], self.branch_done)
+
+  def branch_done(self, output):
+    self.releases = [i.replace('origin/release/', 'Release ').strip()
+      for i in output.rstrip().split('\n') if i.find('origin/release/') != -1]
+    if self.releases:
+      self.select(self.releases, self.release_selected, sublime.MONOSPACE_FONT)
+    else:
+      self.panel('No remote releases exist.')
+
+  def release_selected(self, selected):
+    if 0 <= selected < len(self.releases):
+      selected_release = self.releases[picked].replace('Release ', '')
+      self.git(['flow', 'release', 'track', selected_release], self.release_track_done)
+  
+  def release_track_done(self, output):
+    self.panel(results)
+    self.window.run_command('git_set_window_status')
 
 #
 # Meta
