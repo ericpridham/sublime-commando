@@ -231,7 +231,7 @@ class GitFlowHotfixStartCommand(GitRepoCommand):
     self.git(['status', '--porcelain'], self.status_done)
 
   def status_done(self, output):
-    uncommitted = [x for x in output.rstrip().split("\n") if x[0] != '?']
+    uncommitted = [x for x in output.rstrip().split("\n") if x and x[0] != '?']
     if uncommitted:
       self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
     else:
@@ -314,7 +314,7 @@ class GitFlowReleaseStartCommand(GitRepoCommand):
     self.git(['status', '--porcelain'], self.status_done)
 
   def status_done(self, output):
-    uncommitted = [x for x in output.rstrip().split("\n") if x[0] != '?']
+    uncommitted = [x for x in output.rstrip().split("\n") if x and x[0] != '?']
     if uncommitted:
       self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
     else:
