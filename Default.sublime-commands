@@ -1,11 +1,15 @@
 [
   // Git
-   { "caption": "Git: Status",    "command": "git_status" }
-  ,{ "caption": "Git: Diff File", "command": "git_diff" }
-  ,{ "caption": "Git: Diff All",  "command": "git_diff_all" }
-  ,{ "caption": "Git: Add",       "command": "git_add" }
-  ,{ "caption": "Git: Reset",     "command": "git_reset" }
-  ,{ "caption": "Git: Commit",    "command": "git_commit" }
+   { "caption": "Git: Status",        "command": "git_status" }
+  ,{ "caption": "Git: Diff File",     "command": "git_diff" }
+  ,{ "caption": "Git: Diff All",      "command": "git_diff_all" }
+  ,{ "caption": "Git: Add",           "command": "git_add" }
+  ,{ "caption": "Git: Reset",         "command": "git_reset" }
+  ,{ "caption": "Git: Checkout File", "command": "git_checkout" }
+  ,{ "caption": "Git: Commit",        "command": "git_commit" }
+  ,{ "caption": "Git: Commit",        "command": "git_commit" }
+  ,{ "caption": "Git: Stash",         "command": "git_stash" }
+  ,{ "caption": "Git: Stash Pop",     "command": "git_stash_pop" }
 
   // Git Flow
   ,{ "caption": "Git Flow: Init",            "command": "git_flow_init" }

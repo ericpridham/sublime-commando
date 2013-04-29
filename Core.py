@@ -47,7 +47,7 @@ class Command:
 
     self.thread = CommandThread(self.full_command, self.on_output, self.get_working_dir())
     self.thread.start()
-    sublime.set_timeout(lambda: self.watch_thread(), 500)
+    sublime.set_timeout(self.watch_thread, 500)
 
   def watch_thread(self):
     self.loop = (self.loop+1) % 4
@@ -84,7 +84,8 @@ class Command:
       self.get_window().run_command("show_panel",{"panel":"output.command"})
 
   def select(self, *args, **kwargs):
-    self.get_window().show_quick_panel(*args, **kwargs)
+    # allows us to chain quick panels (otherwise "Quick panel unavailable" error is thrown)
+    sublime.set_timeout(lambda: self.get_window().show_quick_panel(*args, **kwargs), 10)
 
   def prompt(self, *args, **kwargs):
     self.get_window().show_input_panel(*args, **kwargs)
@@ -106,7 +107,17 @@ class Command:
 
   def open_file(self, filename):
     full_path = os.path.join(self.get_working_dir(), filename)
-    self.get_window().open_file(full_path)
+    v = self.get_window().open_file(full_path)
+    # for some reason files are getting focus after they are opened through this
+    # method.  so force focus after loading.
+    sublime.set_timeout(lambda: self.focus_view(v), 100)
+    return v
+
+  def focus_view(self, view):
+    if view.is_loading():
+      sublime.set_timeout(lambda: self.focus_view(view), 100)
+    else:
+      self.window.focus_view(view)
 
 #stolen from http://www.sublimetext.com/forum/viewtopic.php?f=5&p=45149
 class SimpleInsertCommand(sublime_plugin.TextCommand):

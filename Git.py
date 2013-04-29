@@ -8,6 +8,7 @@ PLUGIN_PATH = None
 def plugin_loaded():
   global PLUGIN_PATH
   PLUGIN_PATH = os.path.dirname(__file__)
+  sublime.active_window().run_command('git_window_show_version')
 
 class GitCommand(CC.Command):
   def git_root(self, in_file):
@@ -145,6 +146,11 @@ class GitResetCommand(GitFileCommand):
   def run(self, edit):
     self.git(['reset', '-q', 'HEAD', self.view.file_name()])
     sublime.status_message("Reset " + self.view.file_name())
+
+class GitCheckoutCommand(GitFileCommand):
+  def run(self, edit):
+    self.git(['checkout', self.view.file_name()])
+    sublime.status_message("Checked out " + self.view.file_name())
 
 class GitStashCommand(GitRepoCommand):
   def run(self):
