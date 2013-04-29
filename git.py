@@ -1,5 +1,5 @@
 import sublime, sublime_plugin
-import Commando.Core as CC
+import Commando.core as CC
 import os.path
 import time
 import re
