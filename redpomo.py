@@ -1,5 +1,5 @@
 import sublime, sublime_plugin
-import Commando.Core as CC
+import Commando.core as CC
 import re
 import webbrowser
 import time
@@ -10,13 +10,13 @@ class RedpomoCommand(CC.Command, sublime_plugin.WindowCommand):
   action_descs = ['Open', 'Start', 'Close']
 
   def redpomo(self, params, callback = None):
-    s = sublime.load_settings("Redpomo.sublime-settings")
+    s = sublime.load_settings("redpomo.sublime-settings")
     cmd = s.get('redpomo_command')
     if cmd:
       self.exec_command(cmd, params, callback)
 
   def todo(self, params, callback = None):
-    s = sublime.load_settings("Redpomo.sublime-settings")
+    s = sublime.load_settings("redpomo.sublime-settings")
     cmd = s.get('todo_command')
     if cmd:
       self.exec_command(cmd, params, callback)
@@ -65,7 +65,7 @@ class RedpomoListCommand(RedpomoCommand):
           'project': m.group('proj'),
           'tracker': m.group('trk')})
 
-    s = sublime.load_settings("Redpomo.sublime-settings")
+    s = sublime.load_settings("redpomo.sublime-settings")
     if s.get('compact_list'):
       task_list = ["{priority:<2} {issue:>4} {project:<9} {subject}".format(**t) for t in self.tasks]
     else:

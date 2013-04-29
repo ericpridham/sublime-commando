@@ -22,7 +22,7 @@ class GitCommand(CC.Command):
     return False
 
   def git(self, params, callback = None):
-    s = sublime.load_settings("Git.sublime-settings")
+    s = sublime.load_settings("git.sublime-settings")
     cmd = s.get('git_binary', 'git')
     self.exec_command(cmd, params, callback)
 
