@@ -22,6 +22,9 @@
   ,{ "caption": "Git Flow: Release Publish", "command": "git_flow_release_publish" }
   ,{ "caption": "Git Flow: Release Track",   "command": "git_flow_release_track" }
 
+  // Terminal
+  ,{ "caption": "Terminal Here",   "command": "terminal_here" }
+
   // Meta
   ,{ "caption": "Git Plugin: Update Self", "command": "git_plugin_update"}
 ]

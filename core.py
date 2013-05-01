@@ -36,6 +36,13 @@ class Command:
   def get_working_dir(self):
     return os.getcwd()
 
+  def get_file_dir(self):
+    view = self.get_view()
+    if view is not None:
+      if view.file_name() is not None:
+        return os.path.dirname(view.file_name())
+    return None
+
   def exec_command(self, command, params = None, callback = None):
     self.command = command
     self.params = params if params is not None else []
