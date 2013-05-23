@@ -55,9 +55,10 @@ class RedpomoListCommand(RedpomoCommand):
   def list_done(self, output):
     self.tasks = []
     for line in output.splitlines():
-      m = re.search('^[0-9]+ (\((?P<pri>.)\) )?(?P<sub>.*) (?P<iss>#\w+) \+(?P<proj>[\w-]+) (?P<trk>@\w+)$', line)
+      m = re.search('^(?P<id>[0-9]+) (\((?P<pri>.)\) )?(?P<sub>.*) #(?P<iss>\w+) \+(?P<proj>[\w-]+) (?P<trk>@\w+)$', line)
       if m:
         self.tasks.append({
+          'id': m.group('id'),
           'priority': m.group('pri') if m.group('pri') else '',
           'priority_desc': self.priority_descs[m.group('pri')] if m.group('pri') else '',
           'subject':  m.group('sub'),
@@ -67,7 +68,7 @@ class RedpomoListCommand(RedpomoCommand):
 
     s = sublime.load_settings("redpomo.sublime-settings")
     if s.get('compact_list'):
-      task_list = ["{priority:<2} {issue:>4} {project:<9} {subject}".format(**t) for t in self.tasks]
+      task_list = ["{priority:<2} #{issue:>4} {project:<9} {subject}".format(**t) for t in self.tasks]
     else:
       task_list = [["{issue} {subject}".format(**t), "{priority_desc} {project}".format(**t)] for t in self.tasks]
       pass
@@ -75,7 +76,7 @@ class RedpomoListCommand(RedpomoCommand):
 
   def get_task_num(self, selected):
     if 0 <= selected < len(self.tasks):
-      self.do_task_action(self.tasks[selected]['issue'])
+      self.do_task_action(self.tasks[selected]['id'])
 
   def do_redpomo_action(self, action, task_num):
     if action == 'open':
@@ -90,7 +91,7 @@ class RedpomoListCommand(RedpomoCommand):
 
   def on_redpomo_close_input(self, message):
     if message.strip():
-      self.redpomo(['close', '-m', message.strip(), self.task_num_selected], self.open_issue_url)
+      self.redpomo(['close', '-m', message.strip(), task_num_selected], self.open_issue_url)
 
   #
   # Override from here down
