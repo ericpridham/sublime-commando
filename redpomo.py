@@ -68,7 +68,7 @@ class RedpomoListCommand(RedpomoCommand):
 
     s = sublime.load_settings("redpomo.sublime-settings")
     if s.get('compact_list'):
-      task_list = ["{priority:<2} #{issue:>4} {project:<9} {subject}".format(**t) for t in self.tasks]
+      task_list = ["{priority:<2} #{issue:>3} {project:<10} {subject}".format(**t) for t in self.tasks]
     else:
       task_list = [["{issue} {subject}".format(**t), "{priority_desc} {project}".format(**t)] for t in self.tasks]
       pass
@@ -91,7 +91,7 @@ class RedpomoListCommand(RedpomoCommand):
 
   def on_redpomo_close_input(self, message):
     if message.strip():
-      self.redpomo(['close', '-m', message.strip(), task_num_selected], self.open_issue_url)
+      self.redpomo(['close', '-m', message.strip(), self.task_num_selected], self.open_issue_url)
 
   #
   # Override from here down
