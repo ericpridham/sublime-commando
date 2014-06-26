@@ -36,6 +36,13 @@ class Command:
   def get_working_dir(self):
     return os.getcwd()
 
+  def get_file_dir(self):
+    view = self.get_view()
+    if view is not None:
+      if view.file_name() is not None:
+        return os.path.dirname(view.file_name())
+    return None
+
   def exec_command(self, command, params = None, callback = None):
     self.command = command
     self.params = params if params is not None else []
@@ -107,17 +114,21 @@ class Command:
 
   def open_file(self, filename):
     full_path = os.path.join(self.get_working_dir(), filename)
-    v = self.get_window().open_file(full_path)
+    new_view = self.get_window().open_file(full_path)
     # for some reason files are getting focus after they are opened through this
     # method.  so force focus after loading.
-    sublime.set_timeout(lambda: self.focus_view(v), 100)
-    return v
+    if new_view is not None:
+      sublime.set_timeout(lambda: self.focus_view(new_view), 100)
+    return new_view
 
   def focus_view(self, view):
     if view.is_loading():
       sublime.set_timeout(lambda: self.focus_view(view), 100)
     else:
       self.window.focus_view(view)
+      # stolen from http://www.sublimetext.com/forum/viewtopic.php?f=5&t=10997&p=48890&hilit=fuzzyfilenav#p48890
+      self.window.run_command("show_panel", {"panel": "console"})
+      self.window.run_command("hide_panel", {"cancel": True})
 
 #stolen from http://www.sublimetext.com/forum/viewtopic.php?f=5&p=45149
 class SimpleInsertCommand(sublime_plugin.TextCommand):

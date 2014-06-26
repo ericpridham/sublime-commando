@@ -22,7 +22,14 @@ class GitCommand(CC.Command):
     return False
 
   def git(self, params, callback = None):
-    s = sublime.load_settings("Git.sublime-settings")
+    #BAD IDEA.  THIS NO WORKIE! 
+    #When the code below is commented out, the new tab search automatically
+    #opens every single file selected and then saves it!
+    # try:
+    #   self.view.run_command('save')
+    # except AttributeError:
+    #   pass
+    s = sublime.load_settings("git.sublime-settings")
     cmd = s.get('git_binary', 'git')
     self.exec_command(cmd, params, callback)
 
@@ -62,10 +69,14 @@ class CommandoRepoCommand(GitCommand, sublime_plugin.WindowCommand):
 #
 class GitCommitMessageListener(sublime_plugin.EventListener):
   def on_close(self, view):
-    if view.name() == 'COMMIT_EDITMSG':
+    if view.name() == 'COMMIT_EDITMSG' or view.name() == 'COMMIT_ALL_EDITMSG':
       full_region = sublime.Region(0, view.size())
       contents = view.substr(full_region)
-      sublime.active_window().run_command("git_commit_complete", {"contents": contents})
+      if view.name() == 'COMMIT_ALL_EDITMSG':
+        commit_all = True
+      else:
+        commit_all = False
+      sublime.active_window().run_command("git_commit_complete", {"contents": contents, "commit_all": commit_all})
 
 class GitStatusListener(sublime_plugin.EventListener):
   def on_load(self, view):
@@ -179,13 +190,30 @@ class GitCommitCommand(GitRepoCommand):
       # self.panel("Commit Message Here")
 
 class GitCommitCompleteCommand(GitRepoCommand):
-  def run(self, contents):
+  def run(self, contents, commit_all=False):
     lines = filter(lambda x: x.strip() and x.strip()[0] != "#", contents.split("\n"))
     message = '\n'.join(lines)
     if message:
-      self.git(['commit', '-m', message])
+      if commit_all:
+        self.git(['commit', '-a', '-m', message])
+      else:
+        self.git(['commit', '-m', message])
     else:
       self.panel("Aborting commit due to empty commit message.")
+
+class GitCommitAllCommand(GitRepoCommand):
+  def run(self):
+    self.git(['status'], self.status_done)
+
+  def status_done(self, output):
+    no_changes = 'no changes added to commit (use "git add" and/or "git commit -a")'
+    clean_wd = "nothing to commit, working directory clean"
+    output = output.replace(no_changes,'')
+    if clean_wd in output:
+      self.panel(no_changes)
+    else:
+      s = self.scratch(output, "COMMIT_ALL_EDITMSG")
+      s.run_command('simple_insert', {"contents":"\n"})
 
 class GitPushCommand(GitRepoCommand):
   def run(self):
