@@ -206,7 +206,9 @@ class GitCommitAllCommand(GitRepoCommand):
     self.git(['status'], self.status_done)
 
   def status_done(self, output):
+    no_changes = 'no changes added to commit (use "git add" and/or "git commit -a")'
     clean_wd = "nothing to commit, working directory clean"
+    output = output.replace(no_changes,'')
     if clean_wd in output:
       self.panel(no_changes)
     else:
