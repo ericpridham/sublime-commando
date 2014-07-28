@@ -1,3 +1,6 @@
+#
+# Commando git plugin (including git-flow support)
+#
 import sublime, sublime_plugin
 import Commando.core as CC
 import os.path
@@ -51,6 +54,7 @@ class GitFileCommand(GitCommand, sublime_plugin.TextCommand):
 #
 # Meta
 #
+
 class CommandoRepoCommand(GitCommand, sublime_plugin.WindowCommand):
   def get_working_dir(self):
     if os.path.isdir(PLUGIN_PATH):
@@ -60,6 +64,7 @@ class CommandoRepoCommand(GitCommand, sublime_plugin.WindowCommand):
 #
 # Events
 #
+
 class GitCommitMessageListener(sublime_plugin.EventListener):
   def on_close(self, view):
     if view.name() == 'COMMIT_EDITMSG' or view.name() == 'COMMIT_ALL_EDITMSG':
@@ -292,6 +297,7 @@ class GitBranchCommand(GitRepoCommand):
 #    
 # Flow
 #
+
 class GitFlowInitCommand(GitRepoCommand):
   def run(self):
     self.git(['flow', 'init'], self.init_done)
@@ -469,6 +475,7 @@ class GitFlowReleaseTrackCommand(GitRepoCommand):
 #
 # Meta
 #
+
 class GitPluginUpdateCommand(CommandoRepoCommand):
   def run(self):
     self.git(['fetch'], self.fetch_done)

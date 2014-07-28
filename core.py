@@ -1,3 +1,7 @@
+#
+# Core library of helper functions to simplify calling command-line commands
+# for the current file or directory.
+#
 import sublime, sublime_plugin
 import subprocess
 import threading
