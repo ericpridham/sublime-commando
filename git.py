@@ -176,7 +176,8 @@ class GitCommitCommand(GitRepoCommand):
     if no_changes in output or clean_wd in output:
       self.panel(no_changes)
     else:
-      s = self.scratch(output, "COMMIT_EDITMSG")
+      lines = map(lambda l: "#"+l if not l or l[0] != "#" else l, output.split("\n"))
+      s = self.scratch("\n".join(lines), "COMMIT_EDITMSG")
       s.run_command('simple_insert', {"contents":"\n"})
       # self.prompt('Commit Message', '', 
       #   lambda str: self.commit_change,
