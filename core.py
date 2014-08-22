@@ -1,6 +1,6 @@
 #
 # Core library of helper functions to simplify calling command-line commands
-# for the current file or directory.
+# for the current file or path.
 #
 import sublime, sublime_plugin
 import subprocess
