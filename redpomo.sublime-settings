@@ -1,0 +1,6 @@
+{
+  "todo_command": "/Users/admin/bin/todo.sh" // path to todo.sh shell command
+  ,"redpomo_command": "/Users/admin/bin/redpomo.sh" // path to redpomo binary
+  ,"default_tracker": "replico"
+  ,"compact_list": true
+}
