@@ -1,5 +1,5 @@
 import sublime, sublime_plugin
-import Commando.core as CC
+import commando.core as CC
 import os.path
 import time
 import re
@@ -46,6 +46,18 @@ class GitRepoCommand(GitCommand, sublime_plugin.WindowCommand):
       if git_root:
         return git_root
     return None
+
+  def check_clean(self, clean_done):
+    self.clean_callback = clean_done
+    self.git(['status', '--porcelain'], self.status_done)
+
+  def status_done(self, output):
+    uncommitted = [x for x in output.splitlines() if x and x[0] != '?']
+    if uncommitted:
+      self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
+    else:
+      self.clean_callback()
+
 
 class GitFileCommand(GitCommand, sublime_plugin.TextCommand):
   def get_working_dir(self):
@@ -312,14 +324,17 @@ class GitFlowInitCommand(GitRepoCommand):
 
 class GitFlowHotfixStartCommand(GitRepoCommand):
   def run(self):
-    self.git(['status', '--porcelain'], self.status_done)
+    self.check_clean(self.prompt_hotfix)
 
-  def status_done(self, output):
-    uncommitted = [x for x in output.splitlines() if x and x[0] != '?']
-    if uncommitted:
-      self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
-    else:
-      self.prompt("git flow hotfix start", "", self.hotfix_entered, None, None)
+  def prompt_hotfix(self):
+    self.prompt("git flow feature start", "", self.hotfix_entered, None, None)
+
+class GitFlowHotfixStartCommand(GitRepoCommand):
+  def run(self):
+    self.check_clean(self.prompt_hotfix)
+
+  def prompt_hotfix(self):
+    self.prompt("git flow hotfix start", "", self.hotfix_entered, None, None)
 
   def hotfix_entered(self, user_input):
     hotfix = str(user_input)
@@ -395,14 +410,10 @@ class GitFlowHotfixTrackCommand(GitRepoCommand):
 
 class GitFlowReleaseStartCommand(GitRepoCommand):
   def run(self):
-    self.git(['status', '--porcelain'], self.status_done)
+    self.check_clean(self.prompt_release)
 
-  def status_done(self, output):
-    uncommitted = [x for x in output.splitlines() if x and x[0] != '?']
-    if uncommitted:
-      self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
-    else:
-      self.prompt("git flow release start", "", self.release_entered, None, None)
+  def prompt_release(self):
+    self.prompt("git flow release start", "", self.release_entered, None, None)
 
   def release_entered(self, user_input):
     release = str(user_input)
