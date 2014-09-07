@@ -1,3 +1,7 @@
+#
+# Core library of helper functions to simplify calling command-line commands
+# for the current file or path.
+#
 import sublime, sublime_plugin
 import subprocess
 import threading
@@ -8,18 +12,22 @@ def plugin_loaded():
   pass
 
 class CommandThread(threading.Thread):
-  def __init__(self, command, callback = None, working_dir = None):
+  def __init__(self, command, callback = None, working_dir = None, env = None):
     super().__init__()
     self.command = command
     self.callback = callback
     self.working_dir = working_dir
+    self.env = env
 
   def run(self):
     error = False
     try:
       if self.working_dir is not None:
         os.chdir(self.working_dir)
-        output = subprocess.check_output(self.command, stderr=subprocess.STDOUT).decode("utf-8")
+        full_env = os.environ.copy()
+        if isinstance(self.env, dict):
+          full_env.update(self.env)
+        output = subprocess.check_output(self.command, env=full_env, stderr=subprocess.STDOUT).decode("utf-8")
       else:
         output = "Working directory not found!"
         error = True
@@ -43,16 +51,17 @@ class Command:
         return os.path.dirname(view.file_name())
     return None
 
-  def exec_command(self, command, params = None, callback = None):
+  def exec_command(self, command, params = None, callback = None, env = None):
     self.command = command
     self.params = params if params is not None else []
     self.full_command = [self.command]+self.params
     self.callback = callback if callback is not None else self.panel
+    self.env = env if env is not None else {}
 
     self.loop = 0
     self.long_command = False
 
-    self.thread = CommandThread(self.full_command, self.on_output, self.get_working_dir())
+    self.thread = CommandThread(self.full_command, self.on_output, self.get_working_dir(), self.env)
     self.thread.start()
     sublime.set_timeout(self.watch_thread, 500)
 
@@ -94,8 +103,8 @@ class Command:
     # allows us to chain quick panels (otherwise "Quick panel unavailable" error is thrown)
     sublime.set_timeout(lambda: self.get_window().show_quick_panel(*args, **kwargs), 10)
 
-  def prompt(self, *args, **kwargs):
-    self.get_window().show_input_panel(*args, **kwargs)
+  def prompt(self, caption, initial_text = "", on_done = None, on_change = None, on_cancel = None):
+    self.get_window().show_input_panel(caption, initial_text, on_done, on_change, on_cancel)
 
   def status(self, name, contents):
     self.get_view().set_status(name, contents)
@@ -135,3 +144,9 @@ class SimpleInsertCommand(sublime_plugin.TextCommand):
   def run(self, edit, contents):
     self.view.insert(edit, 0, contents)
     self.view.run_command("goto_line", {"line":1})
+
+class ReplaceAllCommand(sublime_plugin.TextCommand):
+  def run(self, edit, contents):
+    self.view.replace(edit, sublime.Region(0,self.view.size()), contents)
+    self.view.sel().clear()
+    # self.view.run_command("goto_line", {"line":1})

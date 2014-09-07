@@ -1,6 +1,6 @@
 import sublime, sublime_plugin
 import os
-import Commando.core as CC
+import commando.core as CC
 
 class TerminalCommand(CC.Command):
   def term(self, cwd):

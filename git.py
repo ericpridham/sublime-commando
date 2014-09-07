@@ -1,3 +1,6 @@
+#
+# Commando git plugin (including git-flow support)
+#
 import sublime, sublime_plugin
 import commando.core as CC
 import os.path
@@ -22,13 +25,6 @@ class GitCommand(CC.Command):
     return False
 
   def git(self, params, callback = None):
-    #BAD IDEA.  THIS NO WORKIE! 
-    #When the code below is commented out, the new tab search automatically
-    #opens every single file selected and then saves it!
-    # try:
-    #   self.view.run_command('save')
-    # except AttributeError:
-    #   pass
     s = sublime.load_settings("git.sublime-settings")
     cmd = s.get('git_binary', 'git')
     self.exec_command(cmd, params, callback)
@@ -57,7 +53,6 @@ class GitRepoCommand(GitCommand, sublime_plugin.WindowCommand):
       self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
     else:
       self.clean_callback()
-
 
 class GitFileCommand(GitCommand, sublime_plugin.TextCommand):
   def get_working_dir(self):
@@ -193,7 +188,8 @@ class GitCommitCommand(GitRepoCommand):
     if no_changes in output or clean_wd in output:
       self.panel(no_changes)
     else:
-      s = self.scratch(output, "COMMIT_EDITMSG")
+      lines = map(lambda l: "#"+l if not l or l[0] != "#" else l, output.split("\n"))
+      s = self.scratch("\n".join(lines), "COMMIT_EDITMSG")
       s.run_command('simple_insert', {"contents":"\n"})
       # self.prompt('Commit Message', '', 
       #   lambda str: self.commit_change,
