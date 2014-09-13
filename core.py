@@ -151,4 +151,3 @@ class ReplaceAllCommand(sublime_plugin.TextCommand):
     self.view.replace(edit, sublime.Region(0,self.view.size()), contents)
     self.view.sel().clear()
     # self.view.run_command("goto_line", {"line":1})
-    

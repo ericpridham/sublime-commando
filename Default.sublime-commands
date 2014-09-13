@@ -25,14 +25,6 @@
   // Terminal
   ,{ "caption": "Terminal Here",   "command": "terminal_here" }
 
-  // Android
-  ,{ "caption": "Android: List Targets",   "command": "android_list_targets" }
-  ,{ "caption": "Android: Create Project",   "command": "android_create_project" }
-
-  // Java
-  ,{ "caption": "Java: Compile Self",   "command": "java_compile" }
-  ,{ "caption": "Java: Run Self",       "command": "java_run" }
-
   // Meta
   ,{ "caption": "Git Plugin: Update Self", "command": "git_plugin_update"}
 ]

@@ -43,6 +43,17 @@ class GitRepoCommand(GitCommand, sublime_plugin.WindowCommand):
         return git_root
     return None
 
+  def check_clean(self, clean_done):
+    self.clean_callback = clean_done
+    self.git(['status', '--porcelain'], self.status_done)
+
+  def status_done(self, output):
+    uncommitted = [x for x in output.splitlines() if x and x[0] != '?']
+    if uncommitted:
+      self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
+    else:
+      self.clean_callback()
+
 class GitFileCommand(GitCommand, sublime_plugin.TextCommand):
   def get_working_dir(self):
     if self.view.file_name() is not None:
@@ -54,7 +65,6 @@ class GitFileCommand(GitCommand, sublime_plugin.TextCommand):
 #
 # Meta
 #
-
 class CommandoRepoCommand(GitCommand, sublime_plugin.WindowCommand):
   def get_working_dir(self):
     if os.path.isdir(PLUGIN_PATH):
@@ -64,7 +74,6 @@ class CommandoRepoCommand(GitCommand, sublime_plugin.WindowCommand):
 #
 # Events
 #
-
 class GitCommitMessageListener(sublime_plugin.EventListener):
   def on_close(self, view):
     if view.name() == 'COMMIT_EDITMSG' or view.name() == 'COMMIT_ALL_EDITMSG':
@@ -111,6 +120,9 @@ class GitWindowShowVersionCommand(GitRepoCommand):
       view.run_command('git_show_version')
 
 class GitStatusCommand(GitRepoCommand):
+  def description(self):
+    return "Git: Status"
+
   def run(self):
     self.git(['status', '--porcelain'], self.status_done)
 
@@ -298,7 +310,6 @@ class GitBranchCommand(GitRepoCommand):
 #    
 # Flow
 #
-
 class GitFlowInitCommand(GitRepoCommand):
   def run(self):
     self.git(['flow', 'init'], self.init_done)
@@ -309,14 +320,17 @@ class GitFlowInitCommand(GitRepoCommand):
 
 class GitFlowHotfixStartCommand(GitRepoCommand):
   def run(self):
-    self.git(['status', '--porcelain'], self.status_done)
+    self.check_clean(self.prompt_hotfix)
 
-  def status_done(self, output):
-    uncommitted = [x for x in output.splitlines() if x and x[0] != '?']
-    if uncommitted:
-      self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
-    else:
-      self.prompt("git flow hotfix start", "", self.hotfix_entered)
+  def prompt_hotfix(self):
+    self.prompt("git flow hotfix start", "", self.hotfix_entered, None, None)
+
+class GitFlowHotfixStartCommand(GitRepoCommand):
+  def run(self):
+    self.check_clean(self.prompt_hotfix)
+
+  def prompt_hotfix(self):
+    self.prompt("git flow hotfix start", "", self.hotfix_entered, None, None)
 
   def hotfix_entered(self, user_input):
     hotfix = str(user_input)
@@ -392,14 +406,10 @@ class GitFlowHotfixTrackCommand(GitRepoCommand):
 
 class GitFlowReleaseStartCommand(GitRepoCommand):
   def run(self):
-    self.git(['status', '--porcelain'], self.status_done)
+    self.check_clean(self.prompt_release)
 
-  def status_done(self, output):
-    uncommitted = [x for x in output.splitlines() if x and x[0] != '?']
-    if uncommitted:
-      self.panel("Working tree contains unstaged or uncommitted changes. Aborting.")
-    else:
-      self.prompt("git flow release start", "", self.release_entered)
+  def prompt_release(self):
+    self.prompt("git flow release start", "", self.release_entered, None, None)
 
   def release_entered(self, user_input):
     release = str(user_input)
@@ -476,7 +486,6 @@ class GitFlowReleaseTrackCommand(GitRepoCommand):
 #
 # Meta
 #
-
 class GitPluginUpdateCommand(CommandoRepoCommand):
   def run(self):
     self.git(['fetch'], self.fetch_done)
