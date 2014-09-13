@@ -2,7 +2,7 @@
 # Commando git plugin (including git-flow support)
 #
 import sublime, sublime_plugin
-import commando.core as CC
+import Commando.core as CC
 import os.path
 import time
 import re
@@ -323,7 +323,7 @@ class GitFlowHotfixStartCommand(GitRepoCommand):
     self.check_clean(self.prompt_hotfix)
 
   def prompt_hotfix(self):
-    self.prompt("git flow feature start", "", self.hotfix_entered, None, None)
+    self.prompt("git flow hotfix start", "", self.hotfix_entered, None, None)
 
 class GitFlowHotfixStartCommand(GitRepoCommand):
   def run(self):
