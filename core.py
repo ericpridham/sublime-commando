@@ -3,6 +3,7 @@
 # for the current file or path.
 #
 import sublime, sublime_plugin
+import Default.exec as ex
 import subprocess
 import threading
 import time
@@ -69,11 +70,11 @@ class Command:
     self.loop = (self.loop+1) % 4
     if self.thread.is_alive():
       self.long_command = True
-      self.status('git-command', ' '.join(self.full_command)+': Running'+'.'*self.loop+' '*(3-self.loop))
+      self.status('commando-command', ' '.join(self.full_command)+': Running'+'.'*self.loop+' '*(3-self.loop))
       sublime.set_timeout(lambda: self.watch_thread(),200)
     elif self.long_command:
-      self.status('git-command', ' '.join(self.full_command)+': Done!')
-      sublime.set_timeout(lambda:self.status('git-command',''),3000)
+      self.status('commando-command', ' '.join(self.full_command)+': Done!')
+      sublime.set_timeout(lambda:self.status('commando-command',''),3000)
 
   def get_window(self):
     try:
