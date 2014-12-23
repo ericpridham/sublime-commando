@@ -129,7 +129,7 @@ class CommandoExecCommand(sublime_plugin.ApplicationCommand, ProcessListener):
     results = {"code": exit_code, "output": self.output}
 
     if self.callback:
-      run_commands(self.callback, self.context, results)
+      run_commands(self.callback, self.context, input=results)
 
     self.proc = None
     self.output = ""
@@ -201,8 +201,7 @@ def exec_command(cmd, working_dir=None, env=None, context=None, callback=None):
                       {"cmd": cmd, "working_dir": working_dir, "env": env,
                        "context": context, "callback": callback })
 
-def run_commands(commands, context, results=None):
-  print(results)
+def run_commands(commands, context, input=None):
   next_command = commands.pop(0)
   command_parts = next_command.split('.')
 
@@ -236,25 +235,26 @@ def run_commands(commands, context, results=None):
   else:
     print('Unsupported command context')
 
-  runner.run_command(command_parts[1], {"context": context, "callback": commands, "results": results})
+  runner.run_command(command_parts[1], {"context": context, "callback": commands, "input": input})
 
 #
 # Helper commands
 #
 class Commando:
-  def run(self, context=None, callback=None, results=None):
-    self.on_run()
-    if results:
-      results = self.process_results(results)
+  def run(self, context=None, callback=None, input=None):
+    if input:
+      input = self.process_input(input)
+
+    self.do_command(input)
 
     if callback:
-      run_commands(callback, context, results)
+      run_commands(callback, context)
 
-  def on_run(self):
+  def do_command(self, input=None):
     pass
 
-  def process_results(self, results):
-    return results
+  def process_input(self, input):
+    return input
 
   def run_commands(self, commands):
     run_commands(commands, self.get_context())
