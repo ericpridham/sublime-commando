@@ -1,14 +1,14 @@
-#
-# Commando git plugin (including git-flow support)
-#
+"""
+Commando git plugin (including git-flow support)
+"""
 import sublime, sublime_plugin
 import Commando.core as CC
 import os.path
-import time
 import re
 
 PLUGIN_PATH = None
 def plugin_loaded():
+  """Initialize values on plugin load."""
   global PLUGIN_PATH
   PLUGIN_PATH = os.path.dirname(__file__)
   sublime.active_window().run_command('git_window_show_version')
@@ -18,15 +18,15 @@ class GitCommand(CC.Command):
     cur_path = in_file if os.path.isdir(in_file) else os.path.dirname(in_file)
     cur_path = os.path.normpath(cur_path)
     while cur_path:
-      if os.path.exists(os.path.join(cur_path,'.git')):
+      if os.path.exists(os.path.join(cur_path, '.git')):
         return cur_path
-      parent = os.path.normpath(os.path.join(cur_path,'..'))
+      parent = os.path.normpath(os.path.join(cur_path, '..'))
       cur_path = parent if parent != cur_path else False
     return False
 
-  def git(self, params, callback = None):
-    s = sublime.load_settings("git.sublime-settings")
-    cmd = s.get('git_binary', 'git')
+  def git(self, params, callback=None):
+    settings = sublime.load_settings("git.sublime-settings")
+    cmd = settings.get('git_binary', 'git')
     self.exec_command(cmd, params, callback)
 
   def is_enabled(self):
