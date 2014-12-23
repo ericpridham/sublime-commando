@@ -1,20 +1,21 @@
-#
-# Core library of helper functions to simplify calling command-line commands
-# for the current file or path.
-#
+"""
+Core library of helper functions to simplify calling command-line commands
+for the current file or path.
+"""
 import sublime, sublime_plugin
 import Default.exec as ex
 import subprocess
 import threading
-import time
 import os
 
 def plugin_loaded():
+  """Initialize values on plugin load."""
   pass
 
 class CommandThread(threading.Thread):
-  def __init__(self, command, callback = None, working_dir = None, env = None):
-    super().__init__()
+  """Thread class handling all commando commands."""
+  def __init__(self, command, callback=None, working_dir=None, env=None):
+    super(CommandThread, self).__init__()
     self.command = command
     self.callback = callback
     self.working_dir = working_dir
@@ -28,12 +29,14 @@ class CommandThread(threading.Thread):
         full_env = os.environ.copy()
         if isinstance(self.env, dict):
           full_env.update(self.env)
-        output = subprocess.check_output(self.command, env=full_env, stderr=subprocess.STDOUT).decode("utf-8")
+        output = subprocess.check_output(self.command, env=full_env,
+                                         stderr=subprocess.STDOUT)
+        output = output.decode("utf-8")
       else:
         output = "Working directory not found!"
         error = True
-    except subprocess.CalledProcessError as e:
-      output = '$ ' + ' '.join(e.cmd) + '\n' + e.output.decode('utf-8')
+    except subprocess.CalledProcessError as ex:
+      output = '$ ' + ' '.join(ex.cmd) + '\n' + ex.output.decode('utf-8')
       error = True
     # except:
     #   output = "Other Error!"
@@ -42,6 +45,20 @@ class CommandThread(threading.Thread):
       self.callback(output, error)
 
 class Command:
+  """Controller function that triggers all thread commands"""
+  def __init__(self):
+    self.command = None
+    self.params = None
+    self.full_command = None
+    self.callback = None
+    self.env = None
+
+    self.loop = 0
+    self.long_command = False
+
+    self.thread = CommandThread(self.full_command, self.on_output,
+                                self.get_working_dir(), self.env)
+
   def get_working_dir(self):
     return os.getcwd()
 
