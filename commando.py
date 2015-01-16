@@ -31,7 +31,7 @@ from Default.exec import ProcessListener, AsyncProcess
 
 #
 # Sublime commands
-#
+
 
 class CommandoTestCommand(sublime_plugin.WindowCommand):
   def run(self):
@@ -126,7 +126,7 @@ class CommandoExecCommand(sublime_plugin.ApplicationCommand, ProcessListener):
     if proc != self.proc:
       return
 
-    results = {"code": exit_code, "output": self.output}
+    results = {"code": exit_code, "content": self.output}
 
     if self.callback:
       run_commands(self.callback, self.context, input=results)
@@ -158,15 +158,15 @@ class CommandoExecCommand(sublime_plugin.ApplicationCommand, ProcessListener):
 
     sublime.set_timeout(lambda: self.finish(proc), 0)
 
-class CommandoShowPanelCommand(sublime_plugin.WindowCommand):
-  def run(self, context=None, callback=None, results=None):
-    if results is not None and results['output'] and results['output'].rstrip() != '':
-      if context['window_id']:
+class CommandoShowPanelCommand(sublime_plugin.ApplicationCommand):
+  def run(self, context=None, callback=None, input=None):
+    if input is not None and input['content'] and input['content'].rstrip() != '':
+      if context and context['window_id']:
         window = get_window_by_id(context['window_id'])
       else:
         window = sublime.active_window();
       p = window.create_output_panel("commando")
-      p.run_command("simple_insert", {"contents": results['output']})
+      p.run_command("simple_insert", {"contents": input['content']})
       window.run_command("show_panel", {"panel":"output.commando"})
 
 class SimpleInsertCommand(sublime_plugin.TextCommand):
@@ -245,10 +245,16 @@ class Commando:
     if input:
       input = self.process_input(input)
 
-    self.do_command(input)
+    cmd = self.get_exec_command(input)
+    if cmd:
+      exec_command(cmd, context=context, callback=callback)
+    else:
+      self.do_command(input)
+      if callback:
+        run_commands(callback, context, input=input)
 
-    if callback:
-      run_commands(callback, context)
+  def get_exec_command(self, input=None):
+    return None
 
   def do_command(self, input=None):
     pass
