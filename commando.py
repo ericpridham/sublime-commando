@@ -29,15 +29,12 @@ import pipes
 
 from Default.exec import ProcessListener, AsyncProcess
 
-#
-# Sublime commands
-
 class CommandoKillCommand(sublime_plugin.WindowCommand):
   def run(self):
     sublime.run_command("commando_exec", {"kill": True})
 
 class CommandoExecCommand(sublime_plugin.ApplicationCommand, ProcessListener):
-  """Simplified version of ExecCommand from Default/exec.py"""
+  """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
   cmd = None
   proc = None
   context = None
@@ -181,16 +178,18 @@ def get_view_by_id(window_id, view_id):
         return view
   return None
 
-def panel(content, name="commando", context=None):
+def panel(content, context, name="commando"):
   if content and content.rstrip() != '':
     window = get_window_by_context(context)
     p = window.create_output_panel(name)
     p.run_command("simple_insert", {"contents": content})
     window.run_command("show_panel", {"panel":"output."+name})
 
+def select(items, on_done, flags=sublime.MONOSPACE_FONT, context=None):
+  get_window_by_context(context).show_quick_panel(items, on_done, flags)
 
 def exec_command(cmd, working_dir=None, env=None, context=None, callback=None):
-  # by default, just display the output in a panel
+  # by default display the output in a panel
   if callback is None:
     callback = "app.commando_show_panel"
 
@@ -202,10 +201,10 @@ def run_commands(commands, context, input=None):
   next_command = commands.pop(0)
 
   if isinstance(next_command, list):
-    extra_args = next_command[1]
+    command_args = next_command[1]
     next_command = next_command[0]
   else:
-    extra_args = {}
+    command_args = {}
 
   command_parts = next_command.split('.')
 
@@ -240,8 +239,7 @@ def run_commands(commands, context, input=None):
     print('Unsupported command context')
 
   if runner:
-    args = {"context": context, "callback": commands, "input": input}
-    args.update(extra_args)
+    args = {"context": context, "callback": commands, "input": input, "command_args": command_args}
     runner.run_command(command_parts[1], args)
 
 #
@@ -249,38 +247,15 @@ def run_commands(commands, context, input=None):
 #
 
 class Commando:
+  """The core for commando commands.
+
+  """
   context = None
 
-  def run(self, context=None, callback=None, input=None):
-    self.context = context
-
-    if input:
-      input = self.process_input(input)
-
-    if input and input['code']:
-      run_commands(['app.commando_show_panel'], self.context, input=input)
-    else:
-      cmd = self.get_exec_command(input)
-      if cmd:
-        exec_command(cmd, context=self.context, callback=callback, working_dir=self.get_working_dir(context))
-      else:
-        self.do_command(input)
-        if callback:
-          run_commands(callback, context, input=input)
-
-  def get_exec_command(self, input=None):
-    return None
-
-  def do_command(self, input=None):
-    pass
-
-  def process_input(self, input):
-    return input
-
-  def run_commands(self, commands):
-    run_commands(commands, self.get_context())
-
   def get_context(self):
+    if self.context:
+      return self.context
+
     return {"window_id": self.get_window_id(), "view_id": self.get_view_id()}
 
   def get_window_id(self):
@@ -289,25 +264,57 @@ class Commando:
   def get_view_id(self):
     return None
 
-  # Default working dir is:
-  #   ApplicationCommand - None
-  #   WindowCommand - First folder in project
-  #   TextCommand - Path to filename
-  #
+  def run_commands(self, commands):
+    run_commands(commands, self.get_context())
+
+  def window(self):
+    context = self.get_context()
+    return get_window_by_context(context)
+
+  def run(self, context=None, callback=None, input=None, command_args={}):
+    # stash for future functions, so we don't have to pass it around internally
+    self.context = context
+
+    if input:
+      input = self.process_input(input)
+
+    if input and input['code']:
+      # display any errors in a panel (and cancel callback chain)
+      run_commands(['app.commando_show_panel'], context, input=input)
+    else:
+      cmd = self.exec_command(input, **command_args)
+      if cmd:
+        exec_command(cmd, context=context, callback=callback, working_dir=self.get_working_dir())
+      else:
+        self.do_command(input, **command_args)
+        if callback:
+          run_commands(callback, context, input=input)
+
+  def exec_command(self, input=None, **kwargs):
+    return None
+
+  def do_command(self, input=None, **kwargs):
+    pass
+
+  def process_input(self, input):
+    return input
+
   # Note: This goes here instead of in the inherited classes because we're
   # basing the working dir off of the context (which comes from the initial command)
   # not off the type of the current command.
-  def get_working_dir(self, context):
-    if context['view_id']:
-      view = get_view_by_id(context['window_id'], context['view_id'])
-      print(view.file_name())
-      if view.file_name():
-        return os.path.dirname(view.file_name())
+  def get_working_dir(self):
+    context = self.get_context()
+    if context:
+      if context['view_id']:
+        view = get_view_by_id(context['window_id'], context['view_id'])
+        print(view.file_name())
+        if view.file_name():
+          return os.path.dirname(view.file_name())
 
-    elif context['window_id']:
-      window = get_window_by_id(context['window_id'])
-      if window.folders():
-        return window.folders()[0]
+      elif context['window_id']:
+        window = get_window_by_id(context['window_id'])
+        if window.folders():
+          return window.folders()[0]
 
     return None
 
@@ -334,28 +341,21 @@ class TextCommando(Commando, sublime_plugin.TextCommand):
 
 
 class CommandoShowPanelCommand(ApplicationCommando):
-  def run(self, context=None, callback=None, input=None):
+  def process_input(self, input):
+    if input['code']:
+      input['content'] = 'Error\n-----\n' + input['content']
+      input['code'] = 0 # clear error so it doesn't trigger a recursive chain
+
+    return input
+
+  def do_command(self, input):
     if input:
-      panel(input['content'], context=context)
+      panel(input['content'], context=self.get_context())
 
 class CommandoNewFileCommand(ApplicationCommando):
-  def run(self, context=None, callback=None, input=None, name=None, scratch=None, ro=None):
+  def do_command(self, input, name=None, scratch=None, ro=None):
     if input and input['content'] and input['content'].rstrip() != '':
-      window = get_window_by_context(context)
-      new_view = window.new_file()
-      if name:
-        new_view.set_name(name)
-      if scratch:
-        new_view.set_scratch(True)
-      new_view.run_command("simple_insert", {"contents": input['content']})
-      if ro:
-        new_view.set_read_only(True)
-
-class CommandoNewFileCommand(ApplicationCommando):
-  def run(self, context=None, callback=None, input=None, name=None, scratch=None, ro=None):
-    if input and input['content'] and input['content'].rstrip() != '':
-      window = get_window_by_context(context)
-      new_view = window.new_file()
+      new_view = self.window().new_file()
       if name:
         new_view.set_name(name)
       if scratch:
@@ -367,6 +367,9 @@ class CommandoNewFileCommand(ApplicationCommando):
 class CommandoOpenFileCommand(ApplicationCommando):
   pass
 
-class CommandoSelect(ApplicationCommando):
-  def on_command(self, input=None):
-    
+class CommandoSelectCommand(ApplicationCommando):
+  def do_command(self, input=None):
+    if input:
+    	select(input['content'], None)
+    else:
+      select([['Nothing to select.']], None)
