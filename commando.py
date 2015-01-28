@@ -185,7 +185,11 @@ def panel(content, context, name="commando"):
     p.run_command("simple_insert", {"contents": content})
     window.run_command("show_panel", {"panel":"output."+name})
 
-def select(items, on_done, flags=sublime.MONOSPACE_FONT, context=None):
+def select(items, command, context, flags=sublime.MONOSPACE_FONT):
+  def on_done(i):
+    if i != -1:
+      run_commands([command], context, input={'code':0, 'content': items[i]})
+
   get_window_by_context(context).show_quick_panel(items, on_done, flags)
 
 def exec_command(cmd, working_dir=None, env=None, context=None, callback=None):
@@ -368,8 +372,8 @@ class CommandoOpenFileCommand(ApplicationCommando):
   pass
 
 class CommandoSelectCommand(ApplicationCommando):
-  def do_command(self, input=None):
+  def do_command(self, input=None, on_done=None):
     if input:
-    	select(input['content'], None)
+      select(input['content'], on_done, self.get_context())
     else:
-      select([['Nothing to select.']], None)
+      select([['Nothing to select.']], on_done, self.get_context())
