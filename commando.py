@@ -116,10 +116,8 @@ class CommandoExecCommand(sublime_plugin.ApplicationCommand, ProcessListener):
     if proc != self.proc:
       return
 
-    results = {"code": exit_code, "content": self.output}
-
     if self.callback:
-      run_commands(self.callback, self.context, input=results)
+      run_commands(self.callback, self.context, input=self.output, exit_code=exit_code)
 
     self.proc = None
     self.output = ""
@@ -170,6 +168,12 @@ def get_window_by_context(context):
   else:
     return sublime.active_window();
 
+def get_view_by_context(context):
+  if context and context['window_id'] and context['view_id']:
+    return get_view_by_id(context['window_id'], context['view_id'])
+  else:
+    return sublime.active_window().active_view();
+
 def get_view_by_id(window_id, view_id):
   window = get_window_by_id(window_id)
   if (window):
@@ -188,9 +192,27 @@ def panel(content, context, name="commando"):
 def select(items, command, context, flags=sublime.MONOSPACE_FONT):
   def on_done(i):
     if i != -1:
-      run_commands([command], context, input={'code':0, 'content': items[i]})
+      run_commands([command], context, input=items[i])
 
   get_window_by_context(context).show_quick_panel(items, on_done, flags)
+
+def new_file(content, context, name=None, scratch=None, ro=None, syntax=None):
+  new_view = get_window_by_context(context).new_file()
+  if name:
+    new_view.set_name(name)
+  if scratch:
+    new_view.set_scratch(True)
+  if syntax:
+    new_view.set_syntax_file("Packages/"+syntax+"/"+syntax+".tmLanguage")
+  new_view.run_command("simple_insert", {"contents": content})
+  if ro:
+    new_view.set_read_only(True)
+
+def open_file(filename, context):
+  if os.path.exists(filename):
+    get_window_by_context(context).open_file(filename)
+  else:
+    sublime.error_message('File not found:' + filename)
 
 def exec_command(cmd, working_dir=None, env=None, context=None, callback=None):
   # by default display the output in a panel
@@ -201,7 +223,7 @@ def exec_command(cmd, working_dir=None, env=None, context=None, callback=None):
                       {"cmd": cmd, "working_dir": working_dir, "env": env,
                        "context": context, "callback": callback })
 
-def run_commands(commands, context, input=None):
+def run_commands(commands, context, input=None, exit_code=None):
   next_command = commands.pop(0)
 
   if isinstance(next_command, list):
@@ -243,8 +265,13 @@ def run_commands(commands, context, input=None):
     print('Unsupported command context')
 
   if runner:
-    args = {"context": context, "callback": commands, "input": input, "command_args": command_args}
-    runner.run_command(command_parts[1], args)
+    runner.run_command(command_parts[1], {
+      "context": context,
+      "callback": commands,
+      "input": input,
+      'exit_code': exit_code,
+      "command_args": command_args
+    })
 
 #
 # Helper commands
@@ -268,25 +295,24 @@ class Commando:
   def get_view_id(self):
     return None
 
-  def run_commands(self, commands):
-    run_commands(commands, self.get_context())
+  def get_window(self):
+    return get_window_by_context(self.get_context())
 
-  def window(self):
-    context = self.get_context()
-    return get_window_by_context(context)
+  def get_view(self):
+    return get_view_by_context(self.get_context())
 
-  def run(self, context=None, callback=None, input=None, command_args={}):
+  def run_commands(self, commands, input=None):
+    run_commands(commands, self.get_context(), input=input)
+
+  def run(self, context=None, callback=None, input=None, exit_code=None, command_args={}):
     # stash for future functions, so we don't have to pass it around internally
     self.context = context
 
     if input:
-      input = self.process_input(input)
+      input = self.process_input(input, exit_code=exit_code)
 
-    if input and input['code']:
-      # display any errors in a panel (and cancel callback chain)
-      run_commands(['app.commando_show_panel'], context, input=input)
-    else:
-      cmd = self.exec_command(input, **command_args)
+    if input != False:
+      cmd = self.get_exec(input, **command_args)
       if cmd:
         exec_command(cmd, context=context, callback=callback, working_dir=self.get_working_dir())
       else:
@@ -294,13 +320,14 @@ class Commando:
         if callback:
           run_commands(callback, context, input=input)
 
-  def exec_command(self, input=None, **kwargs):
+  def get_exec(self, input, **kwargs):
     return None
 
-  def do_command(self, input=None, **kwargs):
+  def do_command(self, input, **kwargs):
     pass
 
-  def process_input(self, input):
+  def process_input(self, input, exit_code=None):
+    """Note: Return False will cancel bubble."""
     return input
 
   # Note: This goes here instead of in the inherited classes because we're
@@ -311,7 +338,6 @@ class Commando:
     if context:
       if context['view_id']:
         view = get_view_by_id(context['window_id'], context['view_id'])
-        print(view.file_name())
         if view.file_name():
           return os.path.dirname(view.file_name())
 
@@ -320,11 +346,30 @@ class Commando:
         if window.folders():
           return window.folders()[0]
 
+  def get_path(self, filename=None):
+    context = self.get_context()
+    if context and context['window_id']:
+      window = get_window_by_id(context['window_id'])
+      if window.folders():
+        return window.folders()[0] + ('/' + filename if filename else '')
+
+
     return None
 
-  def panel(self, content, context=None):
+  def panel(self, content):
     if content:
-      panel(input['conten'])
+      panel(content, context=self.get_context())
+
+  def select(self, items, on_done):
+    select(items, on_done, self.get_context())
+
+  def new_file(self, content, name=None, scratch=None, ro=None, syntax=None):
+    if content and content.rstrip() != '':
+      new_file(content.rstrip(), self.get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+
+  def open_file(self, filename):
+    open_file(filename, self.get_context())
+
 
 class ApplicationCommando(Commando, sublime_plugin.ApplicationCommand):
   pass
@@ -334,8 +379,8 @@ class WindowCommando(Commando, sublime_plugin.WindowCommand):
     return self.window.id()
 
 class TextCommando(Commando, sublime_plugin.TextCommand):
-  def run(self, edit, context=None, callback=None, input=None):
-    return Commando.run(self, context=context, callback=callback, input=input)
+  def run(self, edit, context=None, callback=None, input=None, exit_code=None, command_args={}):
+    return Commando.run(self, context=context, callback=callback, input=input, exit_code=exit_code, command_args=command_args)
 
   def get_window_id(self):
     return self.view.window().id()
@@ -345,35 +390,30 @@ class TextCommando(Commando, sublime_plugin.TextCommand):
 
 
 class CommandoShowPanelCommand(ApplicationCommando):
-  def process_input(self, input):
-    if input['code']:
-      input['content'] = 'Error\n-----\n' + input['content']
-      input['code'] = 0 # clear error so it doesn't trigger a recursive chain
+  def process_input(self, input, exit_code=None):
+    if exit_code:
+      sublime.error_message('Error\n-----\n' + input)
+      return False
 
     return input
 
   def do_command(self, input):
     if input:
-      panel(input['content'], context=self.get_context())
+      panel(input, context=self.get_context())
 
 class CommandoNewFileCommand(ApplicationCommando):
-  def do_command(self, input, name=None, scratch=None, ro=None):
-    if input and input['content'] and input['content'].rstrip() != '':
-      new_view = self.window().new_file()
-      if name:
-        new_view.set_name(name)
-      if scratch:
-        new_view.set_scratch(True)
-      new_view.run_command("simple_insert", {"contents": input['content']})
-      if ro:
-        new_view.set_read_only(True)
+  def do_command(self, input, name=None, scratch=None, ro=None, syntax=None):
+    if input and input.rstrip() != '':
+      new_file(content.rstrip(), self.get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
 
 class CommandoOpenFileCommand(ApplicationCommando):
-  pass
+  def do_command(self, input):
+    if os.path.exists(input):
+      new_file(content.rstrip(), self.get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
 
 class CommandoSelectCommand(ApplicationCommando):
-  def do_command(self, input=None, on_done=None):
+  def do_command(self, input, on_done=None):
     if input:
-      select(input['content'], on_done, self.get_context())
+      select(input, on_done, self.get_context())
     else:
       select([['Nothing to select.']], on_done, self.get_context())
