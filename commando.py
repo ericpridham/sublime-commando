@@ -32,126 +32,6 @@ from Default.exec import ProcessListener, AsyncProcess
 class CommandoKillCommand(sublime_plugin.WindowCommand):
   def run(self):
     sublime.run_command("commando_exec", {"kill": True})
-
-class CommandoExecCommand(sublime_plugin.ApplicationCommand, ProcessListener):
-  """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
-  cmd = None
-  proc = None
-  context = None
-  callback = None
-  encoding = None
-
-  output = ""
-  loop = 0
-  longrun = False
-
-  def run(self, cmd=None, working_dir=None, context=None, callback=None,
-          env=None, kill=False, encoding="utf-8"):
-
-    if self.proc and not kill:
-      # ignore overlapping commando calls
-      return
-
-    self.context = context
-    if isinstance(callback, str):
-      callback = [callback]
-    elif not isinstance(callback, list):
-      callback = []
-    self.callback = callback
-
-    # kill running proc (if exists)
-    if kill:
-      if self.proc:
-        self.proc.kill()
-        self.proc = None
-      return
-
-    self.encoding = encoding
-    self.proc = None
-
-    # Change to the working dir, rather than spawning the process with it,
-    # so that emitted working dir relative path names make sense
-    if working_dir is not None:
-      os.chdir(working_dir)
-
-    if env is None:
-      env = {}
-
-    try:
-      self.cmd = cmd
-      self.proc = AsyncProcess(cmd, None, env, self)
-      self.longrun = False
-      sublime.set_timeout(self.watch_proc, 500)
-
-    except Exception as e:
-      self.append_output(str(e) + "\n")
-
-  def is_enabled(self, kill=False):
-    if kill:
-      return (self.proc != None) and self.proc.poll()
-    else:
-      return True
-
-  def watch_proc(self):
-    self.loop = (self.loop+1) % 4
-
-    if self.proc is not None and self.proc.poll():
-      # we don't want to flash the status bar with commands that run quickly,
-      # so we only show status bar after the first watch_proc call
-      self.longrun = True
-      sublime.status_message(' '.join(self.cmd) + ': Running' +
-                             '.' * self.loop + ' ' * (3 - self.loop))
-      sublime.set_timeout(lambda: self.watch_proc(), 200)
-
-    elif self.longrun:
-      sublime.status_message(' '.join(self.cmd) + ': Done!')
-      sublime.set_timeout(lambda: sublime.status_message(''), 3000)
-
-  def append_output(self, string):
-    self.output += string
-
-  def finish(self, proc):
-    exit_code = proc.exit_code()
-
-    if proc != self.proc:
-      return
-
-    if self.callback:
-      run_commands(self.callback, self.context, input=self.output, exit_code=exit_code)
-
-    self.proc = None
-    self.output = ""
-
-  def on_data(self, proc, data):
-    if proc != self.proc:
-      return
-
-    try:
-      string = data.decode(self.encoding)
-
-    except Exception:
-      print("[Decode error - output not " + self.encoding + "]\n")
-      string = ""
-      proc = None
-
-    # Normalize newlines, Sublime Text always uses a single \n separator
-    # in memory.
-    string = string.replace('\r\n', '\n').replace('\r', '\n')
-
-    self.append_output(string)
-
-  def on_finished(self, proc):
-    if proc != self.proc:
-      return
-
-    sublime.set_timeout(lambda: self.finish(proc), 0)
-
-class SimpleInsertCommand(sublime_plugin.TextCommand):
-  def run(self, edit, contents):
-    self.view.insert(edit, 0, contents)
-    self.view.run_command("goto_line", {"line":1})
-
-
 #
 # Module functions
 #
@@ -192,7 +72,7 @@ def panel(content, context, name="commando"):
 def select(items, command, context, flags=sublime.MONOSPACE_FONT):
   def on_done(i):
     if i != -1:
-      run_commands([command], context, input=items[i])
+      run_commando(command, context, input=items[i])
 
   get_window_by_context(context).show_quick_panel(items, on_done, flags)
 
@@ -223,7 +103,13 @@ def exec_command(cmd, working_dir=None, env=None, context=None, callback=None):
                       {"cmd": cmd, "working_dir": working_dir, "env": env,
                        "context": context, "callback": callback })
 
-def run_commands(commands, context, input=None, exit_code=None):
+def run_commando(commands, context, input=None, exit_code=None):
+  if isinstance(commands, str):
+    commands = [commands]
+  elif not isinstance(commands, list):
+    commands = []
+
+  print(commands)
   next_command = commands.pop(0)
 
   if isinstance(next_command, list):
@@ -282,6 +168,7 @@ class Commando:
 
   """
   context = None
+  callback = None
 
   def get_context(self):
     if self.context:
@@ -301,33 +188,17 @@ class Commando:
   def get_view(self):
     return get_view_by_context(self.get_context())
 
-  def run_commands(self, commands, input=None):
-    run_commands(commands, self.get_context(), input=input)
+  def run_commando(self, commands, input=None):
+    run_commando(commands, self.get_context(), input=input)
 
   def run(self, context=None, callback=None, input=None, exit_code=None, command_args={}):
-    # stash for future functions, so we don't have to pass it around internally
     self.context = context
+    self.callback = callback
+    input = self.do_command(input, exit_code, **command_args)
+    if input != False and callback:
+        run_commando(callback, context, input=input)
 
-    if input:
-      input = self.process_input(input, exit_code=exit_code)
-
-    if input != False:
-      cmd = self.get_exec(input, **command_args)
-      if cmd:
-        exec_command(cmd, context=context, callback=callback, working_dir=self.get_working_dir())
-      else:
-        self.do_command(input, **command_args)
-        if callback:
-          run_commands(callback, context, input=input)
-
-  def get_exec(self, input, **kwargs):
-    return None
-
-  def do_command(self, input, **kwargs):
-    pass
-
-  def process_input(self, input, exit_code=None):
-    """Note: Return False will cancel bubble."""
+  def do_command(self, input, exit_code, **kwargs):
     return input
 
   # Note: This goes here instead of in the inherited classes because we're
@@ -336,7 +207,7 @@ class Commando:
   def get_working_dir(self):
     context = self.get_context()
     if context:
-      if context['view_id']:
+      if context['window_id'] and context['view_id']:
         view = get_view_by_id(context['window_id'], context['view_id'])
         if view.file_name():
           return os.path.dirname(view.file_name())
@@ -345,6 +216,10 @@ class Commando:
         window = get_window_by_id(context['window_id'])
         if window.folders():
           return window.folders()[0]
+
+  def get_filename(self):
+    view = get_view_by_context(self.get_context())
+    return self.get_path(view.file_name())
 
   def get_path(self, filename=None):
     context = self.get_context()
@@ -388,6 +263,126 @@ class TextCommando(Commando, sublime_plugin.TextCommand):
   def get_view_id(self):
     return self.view.id()
 
+class CommandoExecCommand(ApplicationCommando, ProcessListener):
+  """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
+  cmd = None
+  proc = None
+  encoding = None
+
+  output = ""
+  loop = 0
+  longrun = False
+
+  def do_command(self, input, exit_code, cmd=None, working_dir=None, context=None, callback=None,
+          env=None, kill=False, encoding="utf-8"):
+
+    # override default behavior with params if provided
+    if context:
+      self.context = context
+    if callback:
+      self.callback = callback
+
+    if self.proc and not kill:
+      # ignore overlapping commando calls
+      return
+
+    # kill running proc (if exists)
+    if kill:
+      if self.proc:
+        self.proc.kill()
+        self.proc = None
+      return
+
+    self.encoding = encoding
+    self.proc = None
+
+    if not working_dir:
+      working_dir = self.get_working_dir()
+
+    # Change to the working dir, rather than spawning the process with it,
+    # so that emitted working dir relative path names make sense
+    if working_dir is not None:
+      os.chdir(working_dir)
+
+    if env is None:
+      env = {}
+
+    try:
+      self.cmd = cmd
+      self.proc = AsyncProcess(cmd, None, env, self)
+      self.longrun = False
+      sublime.set_timeout(self.watch_proc, 500)
+
+    except Exception as e:
+      self.append_output(str(e) + "\n")
+
+    # we're handling our own callback, so cancel the bubble
+    return False
+
+  def is_enabled(self, kill=False):
+    if kill:
+      return (self.proc != None) and self.proc.poll()
+    else:
+      return True
+
+  def watch_proc(self):
+    self.loop = (self.loop+1) % 4
+
+    if self.proc is not None and self.proc.poll():
+      # we don't want to flash the status bar with commands that run quickly,
+      # so we only show status bar after the first watch_proc call
+      self.longrun = True
+      sublime.status_message(' '.join(self.cmd) + ': Running' +
+                             '.' * self.loop + ' ' * (3 - self.loop))
+      sublime.set_timeout(lambda: self.watch_proc(), 200)
+
+    elif self.longrun:
+      sublime.status_message(' '.join(self.cmd) + ': Done!')
+      sublime.set_timeout(lambda: sublime.status_message(''), 3000)
+
+  def append_output(self, string):
+    self.output += string
+
+  def finish(self, proc):
+    exit_code = proc.exit_code()
+
+    if proc != self.proc:
+      return
+
+    if self.callback:
+      run_commando(self.callback, self.context, input=self.output, exit_code=exit_code)
+
+    self.proc = None
+    self.output = ""
+
+  def on_data(self, proc, data):
+    if proc != self.proc:
+      return
+
+    try:
+      string = data.decode(self.encoding)
+
+    except Exception:
+      print("[Decode error - output not " + self.encoding + "]\n")
+      string = ""
+      proc = None
+
+    # Normalize newlines, Sublime Text always uses a single \n separator
+    # in memory.
+    string = string.replace('\r\n', '\n').replace('\r', '\n')
+
+    self.append_output(string)
+
+  def on_finished(self, proc):
+    if proc != self.proc:
+      return
+
+    sublime.set_timeout(lambda: self.finish(proc), 0)
+
+class SimpleInsertCommand(sublime_plugin.TextCommand):
+  def run(self, edit, contents):
+    self.view.insert(edit, 0, contents)
+    self.view.run_command("goto_line", {"line":1})
 
 class CommandoShowPanelCommand(ApplicationCommando):
   def process_input(self, input, exit_code=None):
@@ -402,17 +397,17 @@ class CommandoShowPanelCommand(ApplicationCommando):
       panel(input, context=self.get_context())
 
 class CommandoNewFileCommand(ApplicationCommando):
-  def do_command(self, input, name=None, scratch=None, ro=None, syntax=None):
+  def do_command(self, input, exit_code, name=None, scratch=None, ro=None, syntax=None):
     if input and input.rstrip() != '':
       new_file(content.rstrip(), self.get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
 
 class CommandoOpenFileCommand(ApplicationCommando):
-  def do_command(self, input):
+  def do_command(self, input, exit_code):
     if os.path.exists(input):
       new_file(content.rstrip(), self.get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
 
 class CommandoSelectCommand(ApplicationCommando):
-  def do_command(self, input, on_done=None):
+  def do_command(self, input, exit_code, on_done=None):
     if input:
       select(input, on_done, self.get_context())
     else:
