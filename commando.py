@@ -26,6 +26,7 @@ import time
 
 import collections
 import pipes
+import string
 
 from Default.exec import ProcessListener, AsyncProcess
 
@@ -35,6 +36,34 @@ class CommandoKillCommand(sublime_plugin.WindowCommand):
 #
 # Module functions
 #
+
+def class_to_command(cls):
+  clsname = cls.__name__
+  name = clsname[0].lower()
+  last_upper = False
+  for c in clsname[1:]:
+      if c.isupper() and not last_upper:
+          name += '_'
+          name += c.lower()
+      else:
+          name += c
+      last_upper = c.isupper()
+  if name.endswith("_command"):
+      name = name[0:-8]
+  return name
+
+def get_command_type(command):
+  for c in sublime_plugin.application_command_classes:
+    if class_to_command(c) == command:
+      return 'app'
+  for c in sublime_plugin.window_command_classes:
+    if class_to_command(c) == command:
+      return 'window'
+  for c in sublime_plugin.text_command_classes:
+    if class_to_command(c) == command:
+      return 'text'
+  return None
+
 
 def get_window_by_id(id):
   for window in sublime.windows():
@@ -109,7 +138,6 @@ def run_commando(commands, context, input=None, exit_code=None):
   elif not isinstance(commands, list):
     commands = []
 
-  print(commands)
   next_command = commands.pop(0)
 
   if isinstance(next_command, list):
@@ -118,17 +146,19 @@ def run_commando(commands, context, input=None, exit_code=None):
   else:
     command_args = {}
 
-  command_parts = next_command.split('.')
+  command_type = get_command_type(next_command)
 
-  if len(command_parts) != 2:
-    print('Error or whatever.')
+  if not command_type:
+    print(next_command)
+    print('Command not found: ' + next_command)
     return
 
   runner = None
-  if command_parts[0] == 'app' or command_parts[0] == 'application':
+
+  if command_type == 'app':
     runner = sublime
 
-  elif command_parts[0] == 'window':
+  elif command_type == 'window':
     if not context['window_id']:
       print('Context error (window)')
     else:
@@ -138,7 +168,7 @@ def run_commando(commands, context, input=None, exit_code=None):
       else:
         runner = window
 
-  elif command_parts[0] == 'view' or command_parts[0] == 'text':
+  elif command_type == 'text':
     if not context['window_id'] or not context['view_id']:
       print('Context error (view)')
     else:
@@ -151,7 +181,7 @@ def run_commando(commands, context, input=None, exit_code=None):
     print('Unsupported command context')
 
   if runner:
-    runner.run_command(command_parts[1], {
+    runner.run_command(next_command, {
       "context": context,
       "callback": commands,
       "input": input,
@@ -177,10 +207,10 @@ class Commando:
     return {"window_id": self.get_window_id(), "view_id": self.get_view_id()}
 
   def get_window_id(self):
-    return None
+    return sublime.active_window().id()
 
   def get_view_id(self):
-    return None
+    return sublime.active_window().active_view().id()
 
   def get_window(self):
     return get_window_by_context(self.get_context())
