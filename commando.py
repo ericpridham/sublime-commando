@@ -64,7 +64,6 @@ def get_command_type(command):
       return 'text'
   return None
 
-
 def get_window_by_id(id):
   for window in sublime.windows():
     if window.id() == id:
@@ -74,18 +73,18 @@ def get_window_by_id(id):
 def get_window_by_context(context):
   if context and context['window_id']:
     return get_window_by_id(context['window_id'])
-  else:
-    return sublime.active_window();
+  return sublime.active_window();
 
 def get_view_by_context(context):
   if context and context['window_id'] and context['view_id']:
     return get_view_by_id(context['window_id'], context['view_id'])
-  else:
+  elif sublime.active_window():
     return sublime.active_window().active_view();
+  return None
 
 def get_view_by_id(window_id, view_id):
   window = get_window_by_id(window_id)
-  if (window):
+  if window:
     for view in window.views():
       if view.id() == view_id:
         return view
@@ -101,7 +100,7 @@ def panel(content, context, name="commando"):
 def select(items, command, context, flags=sublime.MONOSPACE_FONT):
   def on_done(i):
     if i != -1:
-      run_commando(command, context, input=items[i])
+      commando(command, context, input=items[i])
 
   get_window_by_context(context).show_quick_panel(items, on_done, flags)
 
@@ -132,7 +131,7 @@ def exec_command(cmd, working_dir=None, env=None, context=None, callback=None):
                       {"cmd": cmd, "working_dir": working_dir, "env": env,
                        "context": context, "callback": callback })
 
-def run_commando(commands, context, input=None, exit_code=None):
+def commando(commands, context, input=None):
   if isinstance(commands, str):
     commands = [commands]
   elif not isinstance(commands, list):
@@ -141,15 +140,14 @@ def run_commando(commands, context, input=None, exit_code=None):
   next_command = commands.pop(0)
 
   if isinstance(next_command, list):
-    command_args = next_command[1]
+    cmd_args = next_command[1]
     next_command = next_command[0]
   else:
-    command_args = {}
+    cmd_args = {}
 
   command_type = get_command_type(next_command)
 
   if not command_type:
-    print(next_command)
     print('Command not found: ' + next_command)
     return
 
@@ -185,8 +183,7 @@ def run_commando(commands, context, input=None, exit_code=None):
       "context": context,
       "callback": commands,
       "input": input,
-      'exit_code': exit_code,
-      "command_args": command_args
+      "cmd_args": cmd_args
     })
 
 #
@@ -207,10 +204,14 @@ class Commando:
     return {"window_id": self.get_window_id(), "view_id": self.get_view_id()}
 
   def get_window_id(self):
-    return sublime.active_window().id()
+    if sublime.active_window():
+      return sublime.active_window().id()
+    return None
 
   def get_view_id(self):
-    return sublime.active_window().active_view().id()
+    if sublime.active_window() and sublime.active_window().active_view():
+      return sublime.active_window().active_view().id()
+    return None
 
   def get_window(self):
     return get_window_by_context(self.get_context())
@@ -218,17 +219,20 @@ class Commando:
   def get_view(self):
     return get_view_by_context(self.get_context())
 
-  def run_commando(self, commands, input=None):
-    run_commando(commands, self.get_context(), input=input)
+  def commando(self, commands, input=None):
+    commando(commands, self.get_context(), input=input)
 
-  def run(self, context=None, callback=None, input=None, exit_code=None, command_args={}):
+  def run(self, context=None, callback=None, input=None, cmd_args=None):
     self.context = context
     self.callback = callback
-    input = self.do_command(input, exit_code, **command_args)
-    if input != False and callback:
-        run_commando(callback, context, input=input)
+    if cmd_args is None:
+      cmd_args = {}
 
-  def do_command(self, input, exit_code, **kwargs):
+    input = self.cmd(input, cmd_args)
+    if input != False and callback:
+        commando(callback, context, input=input)
+
+  def cmd(self, input, args=None):
     return input
 
   # Note: This goes here instead of in the inherited classes because we're
@@ -284,14 +288,18 @@ class WindowCommando(Commando, sublime_plugin.WindowCommand):
     return self.window.id()
 
 class TextCommando(Commando, sublime_plugin.TextCommand):
-  def run(self, edit, context=None, callback=None, input=None, exit_code=None, command_args={}):
-    return Commando.run(self, context=context, callback=callback, input=input, exit_code=exit_code, command_args=command_args)
+  def run(self, edit, context=None, callback=None, input=None, cmd_args=None):
+    return Commando.run(self, context=context, callback=callback, input=input, cmd_args=cmd_args)
 
   def get_window_id(self):
     return self.view.window().id()
 
   def get_view_id(self):
     return self.view.id()
+
+class CommandoCommand(ApplicationCommando):
+  def cmd(self):
+    pass
 
 class CommandoExecCommand(ApplicationCommando, ProcessListener):
   """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
@@ -303,30 +311,38 @@ class CommandoExecCommand(ApplicationCommando, ProcessListener):
   loop = 0
   longrun = False
 
-  def do_command(self, input, exit_code, cmd=None, working_dir=None, context=None, callback=None,
-          env=None, kill=False, encoding="utf-8"):
+  def cmd(self, input, args):
+
+    if not 'cmd' in args:
+      return
 
     # override default behavior with params if provided
-    if context:
-      self.context = context
-    if callback:
-      self.callback = callback
+    if 'context' in args:
+      self.context = args['context']
+    if 'callback' in args:
+      self.callback = args['callback']
 
     if self.proc and not kill:
       # ignore overlapping commando calls
       return
 
     # kill running proc (if exists)
-    if kill:
+    if 'kill' in args:
       if self.proc:
         self.proc.kill()
         self.proc = None
       return
 
-    self.encoding = encoding
+    if 'encoding' in args:
+      self.encoding = args['encoding']
+    else:
+      self.encoding = 'utf-8'
+
     self.proc = None
 
-    if not working_dir:
+    if 'working_dir' in args:
+      working_dir = args['working_dir']
+    else:
       working_dir = self.get_working_dir()
 
     # Change to the working dir, rather than spawning the process with it,
@@ -334,12 +350,14 @@ class CommandoExecCommand(ApplicationCommando, ProcessListener):
     if working_dir is not None:
       os.chdir(working_dir)
 
-    if env is None:
+    if 'env' in args:
+      env = args['env']
+    else:
       env = {}
 
     try:
-      self.cmd = cmd
-      self.proc = AsyncProcess(cmd, None, env, self)
+      self.proc_cmd = args['cmd']
+      self.proc = AsyncProcess(args['cmd'], None, env, self)
       self.longrun = False
       sublime.set_timeout(self.watch_proc, 500)
 
@@ -362,12 +380,12 @@ class CommandoExecCommand(ApplicationCommando, ProcessListener):
       # we don't want to flash the status bar with commands that run quickly,
       # so we only show status bar after the first watch_proc call
       self.longrun = True
-      sublime.status_message(' '.join(self.cmd) + ': Running' +
+      sublime.status_message(' '.join(self.proc_cmd) + ': Running' +
                              '.' * self.loop + ' ' * (3 - self.loop))
       sublime.set_timeout(lambda: self.watch_proc(), 200)
 
     elif self.longrun:
-      sublime.status_message(' '.join(self.cmd) + ': Done!')
+      sublime.status_message(' '.join(self.proc_cmd) + ': Done!')
       sublime.set_timeout(lambda: sublime.status_message(''), 3000)
 
   def append_output(self, string):
@@ -380,7 +398,7 @@ class CommandoExecCommand(ApplicationCommando, ProcessListener):
       return
 
     if self.callback:
-      run_commando(self.callback, self.context, input=self.output, exit_code=exit_code)
+      commando(self.callback, self.context, input=self.output)
 
     self.proc = None
     self.output = ""
@@ -415,29 +433,36 @@ class SimpleInsertCommand(sublime_plugin.TextCommand):
     self.view.run_command("goto_line", {"line":1})
 
 class CommandoShowPanelCommand(ApplicationCommando):
-  def process_input(self, input, exit_code=None):
-    if exit_code:
-      sublime.error_message('Error\n-----\n' + input)
-      return False
-
-    return input
-
-  def do_command(self, input):
+  def cmd(self, input):
     if input:
       panel(input, context=self.get_context())
 
 class CommandoNewFileCommand(ApplicationCommando):
-  def do_command(self, input, exit_code, name=None, scratch=None, ro=None, syntax=None):
+  def cmd(self, input, args):#name=None, scratch=None, ro=None, syntax=None):
     if input and input.rstrip() != '':
+      name = scratch = ro = syntax = None
+      if 'name' in args:
+        name = args['name']
+      if 'scratch' in args:
+        scratch = args['scratch']
+      if 'ro' in args:
+        ro = args['ro']
+      if 'syntax' in args:
+        syntax = args['syntax']
       new_file(content.rstrip(), self.get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
 
 class CommandoOpenFileCommand(ApplicationCommando):
-  def do_command(self, input, exit_code):
+  def cmd(self, input):
     if os.path.exists(input):
       new_file(content.rstrip(), self.get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
 
 class CommandoSelectCommand(ApplicationCommando):
-  def do_command(self, input, exit_code, on_done=None):
+  def cmd(self, input, args):#on_done=None):
+    if 'on_done' in args:
+      on_done = args['on_done']
+    else:
+      on_done = None
+
     if input:
       select(input, on_done, self.get_context())
     else:
