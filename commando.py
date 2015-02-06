@@ -273,36 +273,47 @@ class Commando:
   context = None
   callback = None
 
-  def get_context(self):
+  def _get_context(self):
     if self.context:
       return self.context
 
-    return {"window_id": self.get_window_id(), "view_id": self.get_view_id()}
+    return {"window_id": self._get_window_id(), "view_id": self._get_view_id()}
 
-  def get_window_id(self):
+  def _get_window_id(self):
     if sublime.active_window():
       return sublime.active_window().id()
     return None
 
-  def get_view_id(self):
+  def _get_view_id(self):
     if sublime.active_window() and sublime.active_window().active_view():
       return sublime.active_window().active_view().id()
     return None
 
-  def get_window(self):
-    return get_window_by_context(self.get_context())
+  def _do_var_subs(self, items):
+    if isinstance(items, list):
+      for i, val in enumerate(items):
+        items[i] = self._var_sub(val)
+    elif isinstance(items, list):
+      for k, val in items.iteritems():
+        items[k] = self._var_sub(val)
+    return items
 
-  def get_view(self):
-    return get_view_by_context(self.get_context())
+  def _var_sub(self, val):
+    if val == '$file':
+      if self.get_view() and self.get_view().file_name():
+        return self.get_view().file_name()
+    return val
 
   def commando(self, commands, input=None):
-    commando(commands, self.get_context(), input=input)
+    commando(commands, self._get_context(), input=input)
 
   def run(self, context=None, callback=None, input=None, cmd_args=None):
     self.context = context
     self.callback = callback
     if cmd_args is None:
       cmd_args = {}
+    else:
+      cmd_args = self._do_var_subs(cmd_args)
 
     input = self.cmd(input, cmd_args)
     if input != False and callback:
@@ -311,11 +322,17 @@ class Commando:
   def cmd(self, input, args=None):
     return input
 
+  def get_window(self):
+    return get_window_by_context(self._get_context())
+
+  def get_view(self):
+    return get_view_by_context(self._get_context())
+
   # Note: This goes here instead of in the inherited classes because we're
   # basing the working dir off of the context (which comes from the initial command)
   # not off the type of the current command.
   def get_working_dir(self):
-    context = self.get_context()
+    context = self._get_context()
     if context:
       if isinstance(self, sublime_plugin.TextCommand):
         view = get_view_by_id(context['window_id'], context['view_id'])
@@ -328,11 +345,11 @@ class Commando:
     return None
 
   def get_filename(self):
-    view = get_view_by_context(self.get_context())
+    view = get_view_by_context(self._get_context())
     return self.get_path(view.file_name())
 
   def get_path(self, filename=None):
-    context = self.get_context()
+    context = self._get_context()
     if context and context['window_id']:
       window = get_window_by_id(context['window_id'])
       if window.folders():
@@ -342,34 +359,34 @@ class Commando:
 
   def panel(self, content):
     if content:
-      panel(content, context=self.get_context())
+      panel(content, context=self._get_context())
 
   def select(self, items, on_done):
-    select(items, on_done, self.get_context())
+    select(items, on_done, self._get_context())
 
   def new_file(self, content, name=None, scratch=None, ro=None, syntax=None):
     if content and content.rstrip() != '':
-      new_file(content.rstrip(), self.get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+      new_file(content.rstrip(), self._get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
 
   def open_file(self, filename):
-    open_file(filename, self.get_context())
+    open_file(filename, self._get_context())
 
 
 class ApplicationCommando(Commando, sublime_plugin.ApplicationCommand):
   pass
 
 class WindowCommando(Commando, sublime_plugin.WindowCommand):
-  def get_window_id(self):
+  def _get_window_id(self):
     return self.window.id()
 
 class TextCommando(Commando, sublime_plugin.TextCommand):
   def run(self, edit, context=None, callback=None, input=None, cmd_args=None):
     return Commando.run(self, context=context, callback=callback, input=input, cmd_args=cmd_args)
 
-  def get_window_id(self):
+  def _get_window_id(self):
     return self.view.window().id()
 
-  def get_view_id(self):
+  def _get_view_id(self):
     return self.view.id()
 
 class CommandoCommand(ApplicationCommando):
@@ -430,7 +447,7 @@ class CommandoExecCommand(ApplicationCommando):
       env = {}
 
     try:
-      self.proc_cmd = args['cmd']
+      self.proc_cmd = self._do_var_subs(args['cmd'])
       self.proc = CommandoProcess(args['cmd'], self.finish, input=input, env=env, encoding=encoding)
       self.proc.start()
 
@@ -482,7 +499,7 @@ class SimpleInsertCommand(sublime_plugin.TextCommand):
 class CommandoShowPanelCommand(ApplicationCommando):
   def cmd(self, input, args):
     if input:
-      panel(input, context=self.get_context())
+      panel(input, context=self._get_context())
 
 class CommandoNewFileCommand(ApplicationCommando):
   def cmd(self, input, args):#name=None, scratch=None, ro=None, syntax=None):
@@ -496,12 +513,12 @@ class CommandoNewFileCommand(ApplicationCommando):
         ro = args['ro']
       if 'syntax' in args:
         syntax = args['syntax']
-      new_file(input.rstrip(), self.get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+      new_file(input.rstrip(), self._get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
 
 class CommandoOpenFileCommand(ApplicationCommando):
   def cmd(self, input, args):
     if os.path.exists(input):
-      open_file(input, self.get_context())
+      open_file(input, self._get_context())
 
 class CommandoSelectCommand(ApplicationCommando):
   def cmd(self, input, args):#on_done=None):
@@ -511,6 +528,6 @@ class CommandoSelectCommand(ApplicationCommando):
       on_done = None
 
     if input:
-      select(input, on_done, self.get_context())
+      select(input, on_done, self._get_context())
     else:
-      select([['Nothing to select.']], on_done, self.get_context())
+      select([['Nothing to select.']], on_done, self._get_context())
