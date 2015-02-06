@@ -28,32 +28,15 @@ import collections
 import pipes
 import string
 
-#from Default.exec import ProcessListener, AsyncProcess
-####
-####
-####
-class ProcessListener(object):
-  def on_data(self, proc, data):
-    pass
-
-  def on_finished(self, proc):
-    pass
+def devlog(message):
+  print("DEVLOG MESSAGE: " + str(message))
 
 # Encapsulates subprocess.Popen, forwarding stdout to a supplied
 # ProcessListener (on a separate thread)
-class AsyncProcess(object):
-  def __init__(self, cmd, shell_cmd, env, listener, path="", shell=False):
-
-    if not shell_cmd and not cmd:
-      raise ValueError("shell_cmd or cmd is required")
-
-    if shell_cmd and not isinstance(shell_cmd, str):
-      raise ValueError("shell_cmd must be a string")
-
-    self.listener = listener
+class CommandoProcess(threading.Thread):
+  def __init__(self, cmd, on_done, input="", env=None, path="", encoding="utf-8"):
+    super().__init__()
     self.killed = False
-
-    self.start_time = time.time()
 
     # Hide the console window on Windows
     startupinfo = None
@@ -69,37 +52,35 @@ class AsyncProcess(object):
       os.environ["PATH"] = os.path.expandvars(path)
 
     proc_env = os.environ.copy()
-    proc_env.update(env)
+    if env:
+      proc_env.update(env)
     for k, v in proc_env.items():
       proc_env[k] = os.path.expandvars(v)
 
-    if shell_cmd and sys.platform == "win32":
-      # Use shell=True on Windows, so shell_cmd is passed through with the correct escaping
-      self.proc = subprocess.Popen(shell_cmd, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, startupinfo=startupinfo, env=proc_env, shell=True)
-    elif shell_cmd and sys.platform == "darwin":
-      # Use a login shell on OSX, otherwise the users expected env vars won't be setup
-      self.proc = subprocess.Popen(["/bin/bash", "-l", "-c", shell_cmd], stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, startupinfo=startupinfo, env=proc_env, shell=False)
-    elif shell_cmd and sys.platform == "linux":
-      # Explicitly use /bin/bash on Linux, to keep Linux and OSX as
-      # similar as possible. A login shell is explicitly not used for
-      # linux, as it's not required
-      self.proc = subprocess.Popen(["/bin/bash", "-c", shell_cmd], stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, startupinfo=startupinfo, env=proc_env, shell=False)
-    else:
-      # Old style build system, just do what it asks
-      self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, startupinfo=startupinfo, env=proc_env, shell=shell)
+    self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE, startupinfo=startupinfo, env=proc_env)
+
+    if input is None:
+      input = ""
+
+    (stdout, stderr) = self.proc.communicate(input=input.encode(encoding))
+
+    try:
+      stdout = stdout.decode(encoding)
+    except Exception:
+      print("[Decode error - stdout not " + encoding + "]\n")
+
+    try:
+      stderr = stderr.decode(encoding)
+    except Exception:
+      print("[Decode error - stderr not " + encoding + "]\n")
+
+    exitcode = self.exit_code()
+
+    sublime.set_timeout(lambda: on_done(exitcode, stdout, stderr), 0)
 
     if path:
       os.environ["PATH"] = old_path
-
-    if self.proc.stdout:
-      threading.Thread(target=self.read_stdout).start()
-
-    if self.proc.stderr:
-      threading.Thread(target=self.read_stderr).start()
 
   def kill(self):
     if not self.killed:
@@ -120,29 +101,6 @@ class AsyncProcess(object):
   def exit_code(self):
     return self.proc.poll()
 
-  def read_stdout(self):
-    while True:
-      data = os.read(self.proc.stdout.fileno(), 2**15)
-
-      if len(data) > 0:
-        if self.listener:
-          self.listener.on_data(self, data)
-      else:
-        self.proc.stdout.close()
-        if self.listener:
-          self.listener.on_finished(self)
-        break
-
-  def read_stderr(self):
-    while True:
-      data = os.read(self.proc.stderr.fileno(), 2**15)
-
-      if len(data) > 0:
-        if self.listener:
-          self.listener.on_data(self, data)
-      else:
-        self.proc.stderr.close()
-        break
 ###
 ###
 ###
@@ -240,13 +198,13 @@ def open_file(filename, context):
   else:
     sublime.error_message('File not found:' + filename)
 
-def exec_command(cmd, working_dir=None, env=None, context=None, callback=None):
+def exec_command(cmd, input=input, working_dir=None, env=None, context=None, callback=None):
   # by default display the output in a panel
   if callback is None:
     callback = "app.commando_show_panel"
 
   sublime.run_command("commando_exec",
-                      {"cmd": cmd, "working_dir": working_dir, "env": env,
+                      {"cmd": cmd, "input":input, "working_dir": working_dir, "env": env,
                        "context": context, "callback": callback })
 
 def commando(commands, context, input=None):
@@ -415,10 +373,10 @@ class TextCommando(Commando, sublime_plugin.TextCommand):
     return self.view.id()
 
 class CommandoCommand(ApplicationCommando):
-  def cmd(self):
-    pass
+  def cmd(self, input, args):
+    self.commando(args['commands'])
 
-class CommandoExecCommand(ApplicationCommando, ProcessListener):
+class CommandoExecCommand(ApplicationCommando):
   """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
   cmd = None
   proc = None
@@ -438,7 +396,7 @@ class CommandoExecCommand(ApplicationCommando, ProcessListener):
     if 'callback' in args:
       self.callback = args['callback']
 
-    if self.proc and not kill:
+    if self.proc and 'kill' not in args:
       # ignore overlapping commando calls
       return
 
@@ -450,16 +408,15 @@ class CommandoExecCommand(ApplicationCommando, ProcessListener):
       return
 
     if 'encoding' in args:
-      self.encoding = args['encoding']
+      encoding = args['encoding']
     else:
-      self.encoding = 'utf-8'
+      encoding = 'utf-8'
 
     self.proc = None
 
     if 'working_dir' in args:
       working_dir = args['working_dir']
     else:
-      print(self.get_context())
       working_dir = self.get_working_dir()
 
     # Change to the working dir, rather than spawning the process with it,
@@ -474,12 +431,14 @@ class CommandoExecCommand(ApplicationCommando, ProcessListener):
 
     try:
       self.proc_cmd = args['cmd']
-      self.proc = AsyncProcess(args['cmd'], None, env, self)
+      self.proc = CommandoProcess(args['cmd'], self.finish, input=input, env=env, encoding=encoding)
+      self.proc.start()
+
       self.longrun = False
       sublime.set_timeout(self.watch_proc, 500)
 
     except Exception as e:
-      self.append_output(str(e) + "\n")
+      self.finish(1, None, str(e))
 
     # we're handling our own callback, so cancel the bubble
     return False
@@ -505,44 +464,15 @@ class CommandoExecCommand(ApplicationCommando, ProcessListener):
       sublime.status_message(' '.join(self.proc_cmd) + ': Done!')
       sublime.set_timeout(lambda: sublime.status_message(''), 3000)
 
-  def append_output(self, string):
-    self.output += string
-
-  def finish(self, proc):
-    exit_code = proc.exit_code()
-
-    if proc != self.proc:
-      return
-
-    if self.callback:
-      commando(self.callback, self.context, input=self.output)
-
+  def finish(self, exitcode, stdout, stderr):
     self.proc = None
-    self.output = ""
-
-  def on_data(self, proc, data):
-    if proc != self.proc:
-      return
-
-    try:
-      string = data.decode(self.encoding)
-
-    except Exception:
-      print("[Decode error - output not " + self.encoding + "]\n")
-      string = ""
-      proc = None
-
-    # Normalize newlines, Sublime Text always uses a single \n separator
-    # in memory.
-    string = string.replace('\r\n', '\n').replace('\r', '\n')
-
-    self.append_output(string)
-
-  def on_finished(self, proc):
-    if proc != self.proc:
-      return
-
-    sublime.set_timeout(lambda: self.finish(proc), 0)
+    devlog(exitcode)
+    devlog(stdout)
+    devlog(stderr)
+    if exitcode:
+      sublime.error_message("Error (" + str(exitcode) + "): " + stderr)
+    elif self.callback:
+      commando(self.callback, self.context, input=stdout+stderr)
 
 class SimpleInsertCommand(sublime_plugin.TextCommand):
   def run(self, edit, contents):
@@ -550,7 +480,7 @@ class SimpleInsertCommand(sublime_plugin.TextCommand):
     self.view.run_command("goto_line", {"line":1})
 
 class CommandoShowPanelCommand(ApplicationCommando):
-  def cmd(self, input):
+  def cmd(self, input, args):
     if input:
       panel(input, context=self.get_context())
 
