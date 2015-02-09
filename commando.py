@@ -1,43 +1,31 @@
-"""Simplifies integrating with command-line tools.
+"""
 
-The 'exec' command is too specific to builds to be used to call generic command
-line commands. This plugin creates a new command, 'commando_exec' for just that
-purpose. It accepts commands similar to 'exec', but instead of outputting to
-a panel, it calls a provided callback with the output. This allows greater
-control over what to do with the output, as well as allows chaining multiple
-exec calls to create a more complicated process flow.
-
-Then it goes a step further and creates an abstract class to wrap around a
-specific binary (say, git) to make it easier to integrate with specific apps.
-Finally, it provides subclasses for WindowCommand and TextCommand to make
-writing specific Sublime Text commands that integrate with the command wrapper
-easier.
-
-Note: This code started as a copy of Default/exec.py, and was modified from
-there. Some of the clarifying comments were kept from the original.
 """
 
 import sublime, sublime_plugin
 import os, sys
 import threading
 import subprocess
-import functools
-import time
-
-import collections
-import pipes
-import string
 
 def devlog(message):
-  print("DEVLOG MESSAGE: " + str(message))
+  print("DEVLOG: " + str(message))
 
-# Encapsulates subprocess.Popen, forwarding stdout to a supplied
-# ProcessListener (on a separate thread)
 class CommandoProcess(threading.Thread):
-  def __init__(self, cmd, on_done, input="", env=None, path="", encoding="utf-8"):
-    super().__init__()
-    self.killed = False
+  proc = None
 
+  def __init__(self, cmd, on_done, input="", env=None, path="", encoding="utf-8"):
+    super(CommandoProcess, self).__init__()
+    self.killed = False
+    self.cmd = cmd
+    self.on_done = on_done
+    if input is None:
+      input = ""
+    self.input = input.encode(encoding)
+    self.env = env
+    self.path = path
+    self.encoding = encoding
+
+  def run(self):
     # Hide the console window on Windows
     startupinfo = None
     if os.name == "nt":
@@ -45,55 +33,52 @@ class CommandoProcess(threading.Thread):
       startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
     # Set temporary PATH to locate executable in cmd
-    if path:
+    if self.path:
       old_path = os.environ["PATH"]
       # The user decides in the build system whether he wants to append $PATH
       # or tuck it at the front: "$PATH;C:\\new\\path", "C:\\new\\path;$PATH"
-      os.environ["PATH"] = os.path.expandvars(path)
+      os.environ["PATH"] = os.path.expandvars(self.path)
 
     proc_env = os.environ.copy()
-    if env:
-      proc_env.update(env)
+    if self.env:
+      proc_env.update(self.env)
     for k, v in proc_env.items():
       proc_env[k] = os.path.expandvars(v)
 
-    self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-      stderr=subprocess.PIPE, startupinfo=startupinfo, env=proc_env)
+    self.proc = subprocess.Popen(self.cmd, stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 startupinfo=startupinfo, env=proc_env)
 
-    if input is None:
-      input = ""
-
-    (stdout, stderr) = self.proc.communicate(input=input.encode(encoding))
+    (stdout, stderr) = self.proc.communicate(input=self.input)
 
     try:
-      stdout = stdout.decode(encoding)
+      stdout = stdout.decode(self.encoding)
     except Exception:
-      print("[Decode error - stdout not " + encoding + "]\n")
+      print("[Decode error - stdout not " + self.encoding + "]\n")
 
     try:
-      stderr = stderr.decode(encoding)
+      stderr = stderr.decode(self.encoding)
     except Exception:
-      print("[Decode error - stderr not " + encoding + "]\n")
+      print("[Decode error - stderr not " + self.encoding + "]\n")
 
     exitcode = self.exit_code()
 
-    sublime.set_timeout(lambda: on_done(exitcode, stdout, stderr), 0)
+    sublime.set_timeout(lambda: self.on_done(exitcode, stdout, stderr), 0)
 
-    if path:
+    if self.path:
       os.environ["PATH"] = old_path
 
   def kill(self):
     if not self.killed:
       self.killed = True
       if sys.platform == "win32":
-        # terminate would not kill process opened by the shell cmd.exe, it will only kill
-        # cmd.exe leaving the child running
+        # terminate would not kill process opened by the shell cmd.exe, it will
+        # only kill cmd.exe leaving the child running
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         subprocess.Popen("taskkill /PID " + str(self.proc.pid), startupinfo=startupinfo)
       else:
         self.proc.terminate()
-      self.listener = None
 
   def poll(self):
     return self.proc.poll() == None
@@ -140,22 +125,22 @@ def get_command_type(command):
       return 'text'
   return None
 
-def get_window_by_id(id):
+def get_window_by_id(window_id):
   for window in sublime.windows():
-    if window.id() == id:
+    if window.id() == window_id:
       return window
   return None
 
 def get_window_by_context(context):
   if context and context['window_id']:
     return get_window_by_id(context['window_id'])
-  return sublime.active_window();
+  return sublime.active_window()
 
 def get_view_by_context(context):
   if context and context['window_id'] and context['view_id']:
     return get_view_by_id(context['window_id'], context['view_id'])
   elif sublime.active_window():
-    return sublime.active_window().active_view();
+    return sublime.active_window().active_view()
   return None
 
 def get_view_by_id(window_id, view_id):
@@ -166,19 +151,24 @@ def get_view_by_id(window_id, view_id):
         return view
   return None
 
-def panel(content, context, name="commando"):
+def panel(context, content, name="commando"):
   if content and content.rstrip() != '':
     window = get_window_by_context(context)
     p = window.create_output_panel(name)
     p.run_command("simple_insert", {"contents": content})
     window.run_command("show_panel", {"panel":"output."+name})
 
-def select(items, command, context, flags=sublime.MONOSPACE_FONT):
+def quick_panel(context, items, command, flags=sublime.MONOSPACE_FONT):
   def on_done(i):
     if i != -1:
       commando(command, context, input=items[i])
-
   get_window_by_context(context).show_quick_panel(items, on_done, flags)
+
+def input_panel(context, caption, initial_text, command):
+  def on_done(str):
+    if str:
+      commando(command, context, input=str)
+  get_window_by_context(context).show_input_panel(caption, initial_text, on_done, None, None)
 
 def new_file(content, context, name=None, scratch=None, ro=None, syntax=None):
   new_view = get_window_by_context(context).new_file()
@@ -191,21 +181,24 @@ def new_file(content, context, name=None, scratch=None, ro=None, syntax=None):
   new_view.run_command("simple_insert", {"contents": content})
   if ro:
     new_view.set_read_only(True)
+  return new_view
 
 def open_file(filename, context):
   if os.path.exists(filename):
-    get_window_by_context(context).open_file(filename)
+    return get_window_by_context(context).open_file(filename)
   else:
     sublime.error_message('File not found:' + filename)
+    return None
 
-def exec_command(cmd, input=input, working_dir=None, env=None, context=None, callback=None):
+def exec_command(cmd, input=None, working_dir=None, env=None, context=None, callback=None):
   # by default display the output in a panel
   if callback is None:
     callback = "app.commando_show_panel"
 
-  sublime.run_command("commando_exec",
-                      {"cmd": cmd, "input":input, "working_dir": working_dir, "env": env,
-                       "context": context, "callback": callback })
+  sublime.run_command("commando_exec", {"cmd": cmd, "input":input,
+                                        "working_dir": working_dir, "env": env,
+                                        "context": context, "callback": callback
+                                       })
 
 def commando(commands, context, input=None):
   if isinstance(commands, str):
@@ -255,12 +248,8 @@ def commando(commands, context, input=None):
     print('Unsupported command context')
 
   if runner:
-    runner.run_command(next_command, {
-      "context": context,
-      "callback": commands,
-      "input": input,
-      "cmd_args": cmd_args
-    })
+    runner.run_command(next_command, {"context": context, "callback": commands,
+                                      "input": input, "cmd_args": cmd_args})
 
 #
 # Helper commands
@@ -272,6 +261,8 @@ class Commando:
   """
   context = None
   callback = None
+  input = None
+  cmd_args = None
 
   def _get_context(self):
     if self.context:
@@ -302,6 +293,8 @@ class Commando:
     if val == '$file':
       if self.get_view() and self.get_view().file_name():
         return self.get_view().file_name()
+    if val == '$input':
+      return self.input
     return val
 
   def commando(self, commands, input=None):
@@ -310,14 +303,16 @@ class Commando:
   def run(self, context=None, callback=None, input=None, cmd_args=None):
     self.context = context
     self.callback = callback
-    if cmd_args is None:
-      cmd_args = {}
-    else:
-      cmd_args = self._do_var_subs(cmd_args)
+    self.input = input
 
-    input = self.cmd(input, cmd_args)
-    if input != False and callback:
-        commando(callback, context, input=input)
+    if cmd_args is None:
+      self.cmd_args = {}
+    else:
+      self.cmd_args = self._do_var_subs(cmd_args)
+
+    self.input = self.cmd(self.input, self.cmd_args)
+    if self.input != False and self.callback:
+        commando(self.callback, self.context, input=self.input)
 
   def cmd(self, input, args=None):
     return input
@@ -359,10 +354,10 @@ class Commando:
 
   def panel(self, content):
     if content:
-      panel(content, context=self._get_context())
+      panel(self._get_context(), content)
 
-  def select(self, items, on_done):
-    select(items, on_done, self._get_context())
+  def quick_panel(self, items, on_done):
+    quick_panel(self._get_context(), items, on_done)
 
   def new_file(self, content, name=None, scratch=None, ro=None, syntax=None):
     if content and content.rstrip() != '':
@@ -381,6 +376,7 @@ class WindowCommando(Commando, sublime_plugin.WindowCommand):
 
 class TextCommando(Commando, sublime_plugin.TextCommand):
   def run(self, edit, context=None, callback=None, input=None, cmd_args=None):
+    cmd_args['edit'] = edit
     return Commando.run(self, context=context, callback=callback, input=input, cmd_args=cmd_args)
 
   def _get_window_id(self):
@@ -395,7 +391,6 @@ class CommandoCommand(ApplicationCommando):
 
 class CommandoExecCommand(ApplicationCommando):
   """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
-  cmd = None
   proc = None
   encoding = None
 
@@ -473,7 +468,7 @@ class CommandoExecCommand(ApplicationCommando):
       # we don't want to flash the status bar with commands that run quickly,
       # so we only show status bar after the first watch_proc call
       self.longrun = True
-      sublime.status_message(' '.join(self.proc_cmd) + ': Running' +
+      sublime.status_message('running[' + ' '.join(self.proc_cmd) + ']' +
                              '.' * self.loop + ' ' * (3 - self.loop))
       sublime.set_timeout(lambda: self.watch_proc(), 200)
 
@@ -483,9 +478,6 @@ class CommandoExecCommand(ApplicationCommando):
 
   def finish(self, exitcode, stdout, stderr):
     self.proc = None
-    devlog(exitcode)
-    devlog(stdout)
-    devlog(stderr)
     if exitcode:
       sublime.error_message("Error (" + str(exitcode) + "): " + stderr)
     elif self.callback:
@@ -501,6 +493,15 @@ class CommandoShowPanelCommand(ApplicationCommando):
     if input:
       panel(input, context=self._get_context())
 
+class CommandoNewFileWatcher(sublime_plugin.EventListener):
+  def on_pre_close(self, view):
+    callback = view.settings().get('callback')
+    context = view.settings().get('context')
+    if context and callback:
+      content = view.substr(sublime.Region(0, view.size()))
+      commando(callback, context, input=content)
+    pass
+
 class CommandoNewFileCommand(ApplicationCommando):
   def cmd(self, input, args):#name=None, scratch=None, ro=None, syntax=None):
     if input and input.rstrip() != '':
@@ -513,14 +514,22 @@ class CommandoNewFileCommand(ApplicationCommando):
         ro = args['ro']
       if 'syntax' in args:
         syntax = args['syntax']
-      new_file(input.rstrip(), self._get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+      view = new_file(input.rstrip(), self._get_context(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+      view.settings().set('callback', self.callback)
+      view.settings().set('context', self.context)
+
+    return False # cancel callback chain
 
 class CommandoOpenFileCommand(ApplicationCommando):
   def cmd(self, input, args):
     if os.path.exists(input):
-      open_file(input, self._get_context())
+      view = open_file(input, self._get_context())
+      view.settings().set('callback', self.callback)
+      view.settings().set('context', self.context)
 
-class CommandoSelectCommand(ApplicationCommando):
+    return False # need to handle our own callback here
+
+class CommandoQuickPanelCommand(ApplicationCommando):
   def cmd(self, input, args):#on_done=None):
     if 'on_done' in args:
       on_done = args['on_done']
@@ -528,6 +537,19 @@ class CommandoSelectCommand(ApplicationCommando):
       on_done = None
 
     if input:
-      select(input, on_done, self._get_context())
+      quick_panel(self._get_context(), input, on_done)
     else:
-      select([['Nothing to select.']], on_done, self._get_context())
+      quick_panel(self.get_context(), [['Nothing to select.']], on_done)
+    return False
+
+class CommandoInputPanelCommand(ApplicationCommando):
+  def cmd(self, input, args):#on_done=None):
+    if not 'caption' in args:
+      return False
+    if 'initial_text' in args:
+      initial_text = args['initial_text']
+    else:
+      initial_text = ""
+
+    input_panel(self._get_context(), args['caption'], initial_text, self.callback)
+    return False
