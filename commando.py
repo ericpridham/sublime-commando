@@ -158,17 +158,28 @@ def panel(context, content, name="commando"):
     p.run_command("simple_insert", {"contents": content})
     window.run_command("show_panel", {"panel":"output."+name})
 
-def quick_panel(context, items, command, flags=sublime.MONOSPACE_FONT):
+def quick_panel(context, items, on_done_cmd, flags=sublime.MONOSPACE_FONT, selected_idx=-1, on_highlighted_cmd=None):
   def on_done(i):
     if i != -1:
-      commando(context, command, input=items[i])
-  get_window_by_context(context).show_quick_panel(items, on_done, flags)
+      commando(context, on_done_cmd, input=items[i])
+  def on_highlighted(i):
+    if on_highlighted_cmd and i != -1:
+      commando(context, on_highlighted_cmd, input=items[i])
 
-def input_panel(context, caption, initial_text, command):
+  get_window_by_context(context).show_quick_panel(items, on_done, flags, selected_idx, on_highlighted)
+
+def input_panel(context, caption, initial_text, on_done_cmd, on_change_cmd=None, on_cancel_cmd=None):
   def on_done(str):
     if str:
-      commando(context, command, input=str)
-  get_window_by_context(context).show_input_panel(caption, initial_text, on_done, None, None)
+      commando(context, on_done_cmd, input=str)
+  def on_change(str):
+    if on_change_cmd and str:
+      commando(context, on_change_cmd, input=str)
+  def on_cancel():
+    if on_cancel_cmd:
+      commando(context, on_cancel_cmd)
+
+  get_window_by_context(context).show_input_panel(caption, initial_text, on_done, on_change, on_cancel)
 
 def new_file(content, context, name=None, scratch=None, ro=None, syntax=None):
   new_view = get_window_by_context(context).new_file()
@@ -183,9 +194,22 @@ def new_file(content, context, name=None, scratch=None, ro=None, syntax=None):
     new_view.set_read_only(True)
   return new_view
 
+def focus_view(context, view):
+  if view.is_loading():
+    sublime.set_timeout(lambda: self.focus_view(view), 100)
+  else:
+    window = get_window_by_context(context)
+    window.focus_view(view)
+    # stolen from http://www.sublimetext.com/forum/viewtopic.php?f=5&t=10997&p=48890&hilit=fuzzyfilenav#p48890
+    window.run_command("show_panel", {"panel": "console"})
+    window.run_command("hide_panel", {"cancel": True})
+
 def open_file(filename, context):
   if os.path.exists(filename):
-    return get_window_by_context(context).open_file(filename)
+    view = get_window_by_context(context).open_file(filename)
+    if view is not None:
+      sublime.set_timeout(lambda: focus_view(context, view), 100)
+    return view
   else:
     sublime.error_message('File not found:' + filename)
     return None
@@ -298,12 +322,16 @@ class Commando:
   def run(self, context=None, callback=None, input=None, cmd_args=None):
     self.context = context
     self.callback = callback
-    self.input = input
 
     if cmd_args is None:
       self.cmd_args = {}
     else:
       self.cmd_args = self._do_var_subs(cmd_args)
+
+    if 'input' in self.cmd_args:
+      self.input = self.cmd_args['input']
+    else:
+      self.input = input
 
     self.input = self.cmd(self.input, self.cmd_args)
     if self.input != False and self.callback:
@@ -371,6 +399,8 @@ class WindowCommando(Commando, sublime_plugin.WindowCommand):
 
 class TextCommando(Commando, sublime_plugin.TextCommand):
   def run(self, edit, context=None, callback=None, input=None, cmd_args=None):
+    if cmd_args is None:
+      cmd_args = {}
     cmd_args['edit'] = edit
     return Commando.run(self, context=context, callback=callback, input=input, cmd_args=cmd_args)
 
@@ -486,7 +516,7 @@ class SimpleInsertCommand(sublime_plugin.TextCommand):
 class CommandoShowPanelCommand(ApplicationCommando):
   def cmd(self, input, args):
     if input:
-      panel(input, context=self._get_context())
+      panel(self._get_context(), input)
 
 class CommandoNewFileWatcher(sublime_plugin.EventListener):
   def on_pre_close(self, view):
@@ -538,13 +568,37 @@ class CommandoQuickPanelCommand(ApplicationCommando):
     return False
 
 class CommandoInputPanelCommand(ApplicationCommando):
-  def cmd(self, input, args):#on_done=None):
+  def cmd(self, input, args):#on_done=None, on_change=None, on_cancel=None):
     if not 'caption' in args:
       return False
+
+    on_done = self.callback # by default, on_done is the remaining callback stack
+
+    initial_text = ""
+    on_change = on_cancel = None
+
     if 'initial_text' in args:
       initial_text = args['initial_text']
-    else:
-      initial_text = ""
+    if 'on_done' in args:
+      if on_done:
+        print('Warning: on_done provided but command stack is not empty. Skipping ' + str(on_done))
+      on_done = args['on_done']
+    if 'on_change' in args:
+      on_change = args['on_change']
+    if 'on_cancel' in args:
+      on_cancel = args['on_cancel']
 
-    input_panel(self._get_context(), args['caption'], initial_text, self.callback)
+    input_panel(self._get_context(), args['caption'], initial_text, on_done, on_change, on_cancel)
+    return False
+
+class CommandoOkCancelDialogCommand(ApplicationCommando):
+  def cmd(self, input, args):
+    if 'string' in args:
+      string = args['string']
+    else:
+      string = 'Are you sure?'
+
+    if sublime.ok_cancel_dialog(string):
+      return input # pass the input through to the next command
+
     return False
