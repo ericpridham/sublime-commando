@@ -11,10 +11,10 @@ def devlog(message):
   print("DEVLOG: " + str(message))
 
 class CommandoProcess(threading.Thread):
-  proc = None
 
   def __init__(self, cmd, on_done, input="", env=None, path="", encoding="utf-8"):
     super(CommandoProcess, self).__init__()
+    self.proc = None
     self.killed = False
     self.cmd = cmd
     self.on_done = on_done
@@ -161,13 +161,13 @@ def panel(context, content, name="commando"):
 def quick_panel(context, items, command, flags=sublime.MONOSPACE_FONT):
   def on_done(i):
     if i != -1:
-      commando(command, context, input=items[i])
+      commando(context, command, input=items[i])
   get_window_by_context(context).show_quick_panel(items, on_done, flags)
 
 def input_panel(context, caption, initial_text, command):
   def on_done(str):
     if str:
-      commando(command, context, input=str)
+      commando(context, command, input=str)
   get_window_by_context(context).show_input_panel(caption, initial_text, on_done, None, None)
 
 def new_file(content, context, name=None, scratch=None, ro=None, syntax=None):
@@ -195,12 +195,10 @@ def exec_command(cmd, input=None, working_dir=None, env=None, context=None, call
   if callback is None:
     callback = "app.commando_show_panel"
 
-  sublime.run_command("commando_exec", {"cmd": cmd, "input":input,
-                                        "working_dir": working_dir, "env": env,
-                                        "context": context, "callback": callback
-                                       })
+  sublime.run_command("commando_exec", {"cmd": cmd, "input":input, "working_dir": working_dir,
+                                        "env": env, "context": context, "callback": callback})
 
-def commando(commands, context, input=None):
+def commando(context, commands, input=None):
   if isinstance(commands, str):
     commands = [commands]
   elif not isinstance(commands, list):
@@ -256,9 +254,7 @@ def commando(commands, context, input=None):
 #
 
 class Commando:
-  """The core for commando commands.
-
-  """
+  """The core for commando commands."""
   context = None
   callback = None
   input = None
@@ -267,7 +263,6 @@ class Commando:
   def _get_context(self):
     if self.context:
       return self.context
-
     return {"window_id": self._get_window_id(), "view_id": self._get_view_id()}
 
   def _get_window_id(self):
@@ -298,7 +293,7 @@ class Commando:
     return val
 
   def commando(self, commands, input=None):
-    commando(commands, self._get_context(), input=input)
+    commando(self._get_context(), commands, input=input)
 
   def run(self, context=None, callback=None, input=None, cmd_args=None):
     self.context = context
@@ -312,7 +307,7 @@ class Commando:
 
     self.input = self.cmd(self.input, self.cmd_args)
     if self.input != False and self.callback:
-        commando(self.callback, self.context, input=self.input)
+        self.commando(self.callback, input=self.input)
 
   def cmd(self, input, args=None):
     return input
@@ -330,11 +325,11 @@ class Commando:
     context = self._get_context()
     if context:
       if isinstance(self, sublime_plugin.TextCommand):
-        view = get_view_by_id(context['window_id'], context['view_id'])
+        view = get_view_by_context(context)
         if view.file_name():
           return os.path.dirname(view.file_name())
       else:
-        window = get_window_by_id(context['window_id'])
+        window = get_window_by_context(context)
         if window.folders():
           return window.folders()[0]
     return None
@@ -481,7 +476,7 @@ class CommandoExecCommand(ApplicationCommando):
     if exitcode:
       sublime.error_message("Error (" + str(exitcode) + "): " + stderr)
     elif self.callback:
-      commando(self.callback, self.context, input=stdout+stderr)
+      self.commando(self.callback, input=stdout+stderr)
 
 class SimpleInsertCommand(sublime_plugin.TextCommand):
   def run(self, edit, contents):
@@ -499,7 +494,7 @@ class CommandoNewFileWatcher(sublime_plugin.EventListener):
     context = view.settings().get('context')
     if context and callback:
       content = view.substr(sublime.Region(0, view.size()))
-      commando(callback, context, input=content)
+      self.commando(callback, input=content)
     pass
 
 class CommandoNewFileCommand(ApplicationCommando):
