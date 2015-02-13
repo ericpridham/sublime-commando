@@ -196,7 +196,7 @@ def new_file(content, context, name=None, scratch=None, ro=None, syntax=None):
 
 def focus_view(context, view):
   if view.is_loading():
-    sublime.set_timeout(lambda: self.focus_view(view), 100)
+    sublime.set_timeout(lambda: focus_view(context, view), 100)
   else:
     window = get_window_by_context(context)
     window.focus_view(view)
@@ -352,14 +352,18 @@ class Commando:
   def get_working_dir(self):
     context = self._get_context()
     if context:
-      if isinstance(self, sublime_plugin.TextCommand):
-        view = get_view_by_context(context)
-        if view.file_name():
-          return os.path.dirname(view.file_name())
-      else:
-        window = get_window_by_context(context)
-        if window.folders():
-          return window.folders()[0]
+      window = get_window_by_context(context)
+      view = get_view_by_context(context)
+      if window and window.folders():
+        # find the folder that is a subset of the full file path
+        if view and view.file_name():
+          for folder in window.folders():
+            if view.file_name().find(folder) == 0:
+              return folder
+        # otherwise, just use the first folder
+        return window.folders()[0]
+      if view and view.file_name():
+        return os.path.dirname(view.file_name())
     return None
 
   def get_filename(self):
@@ -367,11 +371,9 @@ class Commando:
     return self.get_path(view.file_name())
 
   def get_path(self, filename=None):
-    context = self._get_context()
-    if context and context['window_id']:
-      window = get_window_by_id(context['window_id'])
-      if window.folders():
-        return window.folders()[0] + ('/' + filename if filename else '')
+    working_dir = self.get_working_dir()
+    if working_dir:
+      return working_dir + ('/' + filename if filename else '')
 
     return None
 
@@ -524,7 +526,7 @@ class CommandoNewFileWatcher(sublime_plugin.EventListener):
     context = view.settings().get('context')
     if context and callback:
       content = view.substr(sublime.Region(0, view.size()))
-      self.commando(callback, input=content)
+      commando(context, callback, input=content)
     pass
 
 class CommandoNewFileCommand(ApplicationCommando):
@@ -602,3 +604,8 @@ class CommandoOkCancelDialogCommand(ApplicationCommando):
       return input # pass the input through to the next command
 
     return False
+
+class CommandoSwitchCommand(ApplicationCommando):
+  def cmd(self, input, args):
+    if input in args:
+      self.callback = args[input] + self.callback
