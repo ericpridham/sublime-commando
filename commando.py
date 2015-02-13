@@ -160,7 +160,7 @@ def panel(context, content, name="commando"):
 
 def quick_panel(context, items, on_done_cmd, flags=sublime.MONOSPACE_FONT, selected_idx=-1, on_highlighted_cmd=None):
   def on_done(i):
-    if i != -1:
+    if on_done_cmd and i != -1:
       commando(context, on_done_cmd, input=items[i])
   def on_highlighted(i):
     if on_highlighted_cmd and i != -1:
@@ -170,7 +170,7 @@ def quick_panel(context, items, on_done_cmd, flags=sublime.MONOSPACE_FONT, selec
 
 def input_panel(context, caption, initial_text, on_done_cmd, on_change_cmd=None, on_cancel_cmd=None):
   def on_done(str):
-    if str:
+    if on_done_cmd and str:
       commando(context, on_done_cmd, input=str)
   def on_change(str):
     if on_change_cmd and str:
@@ -412,6 +412,7 @@ class TextCommando(Commando, sublime_plugin.TextCommand):
   def _get_view_id(self):
     return self.view.id()
 
+
 class CommandoCommand(ApplicationCommando):
   def cmd(self, input, args):
     self.commando(args['commands'])
@@ -561,7 +562,7 @@ class CommandoQuickPanelCommand(ApplicationCommando):
     if 'on_done' in args:
       on_done = args['on_done']
     else:
-      on_done = None
+      on_done = self.callback
 
     if input:
       quick_panel(self._get_context(), input, on_done)
