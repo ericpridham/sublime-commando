@@ -35,6 +35,19 @@ def get_command_type(command):
       return 'text'
   return None
 
+def get_active_window_id():
+  if sublime.active_window():
+    return sublime.active_window().id()
+  return None
+
+def get_active_view_id():
+  if sublime.active_window() and sublime.active_window().active_view():
+    return sublime.active_window().active_view().id()
+  return None
+
+def get_active_context():
+  return {"window_id": get_active_window_id(), "view_id": get_active_view_id()}
+
 def get_window_by_id(window_id):
   for window in sublime.windows():
     if window.id() == window_id:

@@ -2,11 +2,16 @@ import sublime, sublime_plugin
 import os, sys
 import threading
 import subprocess
-from . import plugin
+from . import plugin, core
+
+class CommandoCommand(plugin.ApplicationCommando):
+  def run(self, commands=None):
+    if commands:
+      core.commando(core.get_active_context(), commands)
 
 class CommandoProcess(threading.Thread):
 
-  def __init__(self, cmd, on_done, input="", env=None, path="", encoding="utf-8"):
+  def __init__(self, cmd, on_done, input=None, env=None, path=None, encoding="utf-8"):
     super(CommandoProcess, self).__init__()
     self.proc = None
     self.killed = False
@@ -90,10 +95,6 @@ class CommandoKillCommand(sublime_plugin.WindowCommand):
 #
 # Helper commands
 #
-
-class CommandoCommand(plugin.ApplicationCommando):
-  def cmd(self, input, args):
-    self.commando(args['commands'])
 
 class CommandoExecCommand(plugin.ApplicationCommando):
   """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
@@ -234,7 +235,7 @@ class CommandoNewFileCommand(plugin.ApplicationCommando):
 
     return False # cancel callback chain
 
-class CommandoOpenFileCommand(ApplicationCommando):
+class CommandoOpenFileCommand(plugin.ApplicationCommando):
   def cmd(self, input, args):
     if os.path.exists(input):
       view = self.open_file(input)

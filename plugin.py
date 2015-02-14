@@ -14,14 +14,10 @@ class Commando:
     return {"window_id": self._get_window_id(), "view_id": self._get_view_id()}
 
   def _get_window_id(self):
-    if sublime.active_window():
-      return sublime.active_window().id()
-    return None
+    return core.get_active_window_id()
 
   def _get_view_id(self):
-    if sublime.active_window() and sublime.active_window().active_view():
-      return sublime.active_window().active_view().id()
-    return None
+    return core.get_active_view_id()
 
   def _do_var_subs(self, items):
     if isinstance(items, list):
@@ -113,10 +109,11 @@ class Commando:
 
   def new_file(self, content, name=None, scratch=None, ro=None, syntax=None):
     if content and content.rstrip() != '':
-      core.new_file(self._get_context(), content.rstrip(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+      return core.new_file(self._get_context(), content.rstrip(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+    return None
 
   def open_file(self, filename):
-    core.open_file(self._get_context(), filename)
+    return core.open_file(self._get_context(), filename)
 
 
 class ApplicationCommando(Commando, sublime_plugin.ApplicationCommand):
