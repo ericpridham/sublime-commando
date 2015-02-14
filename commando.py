@@ -92,7 +92,7 @@ class CommandoProcess(threading.Thread):
 
 class CommandoKillCommand(sublime_plugin.WindowCommand):
   def run(self):
-    sublime.run_command("commando_exec", {"kill": True})
+    sublime.run_command("commando_exec", {"cmd_args": {"kill": True}})
 
 #
 # Module functions
@@ -420,15 +420,13 @@ class CommandoExecCommand(ApplicationCommando):
   """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
   proc = None
   encoding = None
+  killed = False
 
   output = ""
   loop = 0
   longrun = False
 
   def cmd(self, input, args):
-    if not 'cmd' in args:
-      return
-
     # override default behavior with params if provided
     if 'context' in args:
       self.context = args['context']
@@ -441,9 +439,14 @@ class CommandoExecCommand(ApplicationCommando):
 
     # kill running proc (if exists)
     if 'kill' in args:
+      devlog(self.proc)
       if self.proc:
         self.proc.kill()
         self.proc = None
+        self.killed = True
+      return
+
+    if not 'cmd' in args:
       return
 
     if 'encoding' in args:
@@ -500,7 +503,12 @@ class CommandoExecCommand(ApplicationCommando):
       sublime.set_timeout(lambda: self.watch_proc(), 200)
 
     elif self.longrun:
-      sublime.status_message(' '.join(self.proc_cmd) + ': Done!')
+      msg = ' '.join(self.proc_cmd) + ':'
+      if self.killed:
+        msg += ' Killed!'
+      else:
+        msg += ' Done!'
+      sublime.status_message(msg)
       sublime.set_timeout(lambda: sublime.status_message(''), 3000)
 
   def finish(self, exitcode, stdout, stderr):
