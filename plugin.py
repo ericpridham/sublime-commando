@@ -3,15 +3,14 @@ import os
 from . import core
 
 class Commando:
-  context = None
-  callback = None
-  input = None
-  cmd_args = None
-
-  def _get_context(self):
-    if self.context:
-      return self.context
-    return {"window_id": self._get_window_id(), "view_id": self._get_view_id()}
+  def init_context(self):
+    return {
+      "window_id": self._get_window_id(),
+      "view_id": self._get_view_id(),
+      "args": {},
+      "input": None,
+      "commands": [],
+    }
 
   def _get_window_id(self):
     return core.get_active_window_id()
@@ -26,7 +25,6 @@ class Commando:
     elif isinstance(items, list):
       for k, val in items.iteritems():
         items[k] = self._var_sub(val)
-    return items
 
   def _var_sub(self, val):
     if val == '$file':
@@ -36,84 +34,91 @@ class Commando:
       return self.input
     return val
 
-  def commando(self, commands, input=None):
-    core.commando(self._get_context(), commands, input=input)
+  def run(self, context=None):
+    if context is None:
+      context = self.init_context()
 
-  def run(self, context=None, callback=None, input=None, cmd_args=None):
-    self.context = context
-    self.callback = callback
+    # process the arg vars
+    self._do_var_subs(context['args'])
 
-    if cmd_args is None:
-      self.cmd_args = {}
-    else:
-      self.cmd_args = self._do_var_subs(cmd_args)
+    # allow the user to override input through command args
+    if 'input' in context['args']:
+      context['input'] = context['args']['input']
+      context['args']['input'] = None
 
-    if 'input' in self.cmd_args:
-      self.input = self.cmd_args['input']
-    else:
-      self.input = input
+    # pop input and args
+    cmd_input = context['input']
+    cmd_args = context['args']
+    context['input'] = None
+    context['args'] = {}
 
-    self.input = self.cmd(self.input, self.cmd_args)
-    if self.input != False and self.callback:
-        self.commando(self.callback, input=self.input)
+    # note: cmd can manipulate context any way it wants
+    ret = self.cmd(context, cmd_input, cmd_args)
 
-  def cmd(self, input, args=None):
-    return input
+    # continue the chain
+    if ret != False:
+      self.commando(context)
 
-  def get_window(self):
-    return core.get_window_by_context(self._get_context())
+  def commando(self, context, commands=None):
+    core.commando(context, commands)
 
-  def get_view(self):
-    return core.get_view_by_context(self._get_context())
+  def cmd(self, context):
+    pass
+
+  def get_window(self, context):
+    return core.get_window_by_context(context)
+
+  def get_view(self, context):
+    return core.get_view_by_context(context)
 
   # Note: This goes here instead of in the inherited classes because we're
   # basing the working dir off of the context (which comes from the initial command)
   # not off the type of the current command.
-  def get_working_dir(self):
-    context = self._get_context()
-    if context:
-      window = core.get_window_by_context(context)
-      view = core.get_view_by_context(context)
-      if window and window.folders():
-        # find the folder that is a subset of the full file path
-        if view and view.file_name():
-          for folder in window.folders():
-            if view.file_name().find(folder) == 0:
-              return folder
-        # otherwise, just use the first folder
-        return window.folders()[0]
+  def get_working_dir(self, context=None):
+    if context is None:
+      context = self.init_context()
+    window = core.get_window_by_context(context)
+    view = core.get_view_by_context(context)
+    if window and window.folders():
+      # find the folder that is a subset of the full file path
       if view and view.file_name():
-        return os.path.dirname(view.file_name())
+        for folder in window.folders():
+          if view.file_name().find(folder) == 0:
+            return folder
+      # otherwise, just use the first folder
+      return window.folders()[0]
+    if view and view.file_name():
+      return os.path.dirname(view.file_name())
     return None
 
-  def get_filename(self):
-    view = core.get_view_by_context(self._get_context())
-    return self.get_path(view.file_name())
+  def get_filename(self, context):
+    view = core.get_view_by_context(context)
+    return self.get_path(context, view.file_name())
 
-  def get_path(self, filename=None):
-    working_dir = self.get_working_dir()
+  def get_path(self, context, filename=None):
+    working_dir = self.get_working_dir(context)
     if working_dir:
       return working_dir + ('/' + filename if filename else '')
 
     return None
 
-  def panel(self, content):
+  def panel(self, context, content):
     if content:
-      core.panel(self._get_context(), content)
+      core.panel(context, content)
 
-  def quick_panel(self, items, on_done):
-    core.quick_panel(self._get_context(), items, on_done)
+  def quick_panel(self, context, items, on_done):
+    core.quick_panel(context, items, on_done)
 
-  def input_panel(self, caption, initial_text, on_done, on_change, on_cancel):
-    core.input_panel(self._get_context(), caption, initial_text, on_done, on_change, on_cancel)
+  def input_panel(self, context, caption, initial_text, on_done, on_change, on_cancel):
+    core.input_panel(context, caption, initial_text, on_done, on_change, on_cancel)
 
-  def new_file(self, content, name=None, scratch=None, ro=None, syntax=None):
+  def new_file(self, context, content, name=None, scratch=None, ro=None, syntax=None):
     if content and content.rstrip() != '':
-      return core.new_file(self._get_context(), content.rstrip(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+      return core.new_file(context, content.rstrip(), name=name, scratch=scratch, ro=ro, syntax=syntax)
     return None
 
-  def open_file(self, filename):
-    return core.open_file(self._get_context(), filename)
+  def open_file(self, context, filename):
+    return core.open_file(context, filename)
 
 
 class ApplicationCommando(Commando, sublime_plugin.ApplicationCommand):
@@ -124,11 +129,11 @@ class WindowCommando(Commando, sublime_plugin.WindowCommand):
     return self.window.id()
 
 class TextCommando(Commando, sublime_plugin.TextCommand):
-  def run(self, edit, context=None, callback=None, input=None, cmd_args=None):
+  def run(self, edit, context=None, commands=None, input=None, cmd_args=None):
     if cmd_args is None:
       cmd_args = {}
     cmd_args['edit'] = edit
-    return Commando.run(self, context=context, callback=callback, input=input, cmd_args=cmd_args)
+    return Commando.run(self, context=context, commands=commands, input=input, cmd_args=cmd_args)
 
   def _get_window_id(self):
     return self.view.window().id()

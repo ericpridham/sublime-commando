@@ -2,6 +2,7 @@ import sublime, sublime_plugin
 import os, sys
 import threading
 import subprocess
+import functools
 from . import plugin, core
 
 class CommandoCommand(plugin.ApplicationCommando):
@@ -9,8 +10,199 @@ class CommandoCommand(plugin.ApplicationCommando):
     if commands:
       core.commando(core.get_active_context(), commands)
 
-class CommandoProcess(threading.Thread):
+class CommandoExecCommand(plugin.ApplicationCommando):
+  """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
+  proc = None
+  encoding = None
+  killed = False
 
+  output = ""
+  loop = 0
+  longrun = False
+
+  def cmd(self, context, input, args):
+    # override default behavior with params if provided
+    if self.proc and 'kill' not in args:
+      # ignore overlapping commando calls
+      return
+
+    # kill running proc (if exists)
+    if 'kill' in args:
+      if self.proc:
+        self.proc.kill()
+        self.proc = None
+        self.killed = True
+      return
+
+    if not 'cmd' in args:
+      return
+
+    if 'encoding' in args:
+      encoding = args['encoding']
+    else:
+      encoding = 'utf-8'
+
+    self.proc = None
+
+    if 'working_dir' in args:
+      working_dir = args['working_dir']
+    else:
+      working_dir = self.get_working_dir(context)
+
+    # Change to the working dir, rather than spawning the process with it,
+    # so that emitted working dir relative path names make sense
+    if working_dir is not None:
+      os.chdir(working_dir)
+
+    if 'env' in args:
+      env = args['env']
+    else:
+      env = {}
+
+    try:
+      self._do_var_subs(args['cmd'])
+      self.proc_cmd = args['cmd']
+      self.proc = CommandoProcess(args['cmd'], functools.partial(self.finish, context),
+        input=input, env=env, encoding=encoding)
+      self.proc.start()
+
+      self.longrun = False
+      sublime.set_timeout(self.watch_proc, 500)
+
+    except Exception as e:
+      self.finish(context, 1, None, str(e))
+
+    return False
+
+  def is_enabled(self, kill=False):
+    if kill:
+      return (self.proc != None) and self.proc.poll()
+    else:
+      return True
+
+  def watch_proc(self):
+    self.loop = (self.loop+1) % 4
+
+    if self.proc is not None and self.proc.poll():
+      # we don't want to flash the status bar with commands that run quickly,
+      # so we only show status bar after the first watch_proc call
+      self.longrun = True
+      sublime.status_message('running[' + ' '.join(self.proc_cmd) + ']' +
+                             '.' * self.loop + ' ' * (3 - self.loop))
+      sublime.set_timeout(lambda: self.watch_proc(), 200)
+
+    elif self.longrun:
+      msg = ' '.join(self.proc_cmd) + ':'
+      if self.killed:
+        msg += ' Killed!'
+      else:
+        msg += ' Done!'
+      sublime.status_message(msg)
+      sublime.set_timeout(lambda: sublime.status_message(''), 3000)
+
+  def finish(self, context, exitcode, stdout, stderr):
+    self.proc = None
+    if exitcode:
+      sublime.error_message("Error (" + str(exitcode) + "): " + stderr)
+    elif context['commands']:
+      context['input'] = stdout+stderr
+      self.commando(context)
+
+class CommandoKillCommand(sublime_plugin.WindowCommand):
+  def run(self):
+    sublime.run_command("commando_exec", {"cmd_args": {"kill": True}})
+
+class CommandoShowPanelCommand(plugin.ApplicationCommando):
+  def cmd(self, context, input, args):
+    if input:
+      self.panel(context, input)
+
+class CommandoNewFileCommand(plugin.ApplicationCommando):
+  def cmd(self, context, input, args):#name=None, scratch=None, ro=None, syntax=None):
+    if input and input.rstrip() != '':
+      name = scratch = ro = syntax = None
+      if 'name' in args:
+        name = args['name']
+      if 'scratch' in args:
+        scratch = args['scratch']
+      if 'ro' in args:
+        ro = args['ro']
+      if 'syntax' in args:
+        syntax = args['syntax']
+      view = self.new_file(input.rstrip(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+      view.settings().set('context', context)
+
+    return False
+
+class CommandoOpenFileCommand(plugin.ApplicationCommando):
+  def cmd(self, context, input, args):
+    if os.path.exists(input):
+      view = self.open_file(input)
+      view.settings().set('context', context)
+    return False
+
+class CommandoQuickPanelCommand(plugin.ApplicationCommando):
+  def cmd(self, context, input, args):#on_done=None):
+    if 'on_done' in args:
+      on_done = args['on_done']
+    else:
+      on_done = context['commands']
+
+    if input:
+      self.quick_panel(context, input, on_done)
+
+    return False
+
+class CommandoInputPanelCommand(plugin.ApplicationCommando):
+  def cmd(self, context, input, args):#on_done=None, on_change=None, on_cancel=None):
+    if not 'caption' in args:
+      return False
+
+    on_done = context['commands'] # by default, on_done is the remaining commands stack
+    context['commands'] = []
+
+    initial_text = ""
+    on_change = on_cancel = None
+
+    if 'initial_text' in args:
+      initial_text = args['initial_text']
+    if 'on_done' in args:
+      if on_done:
+        print('Warning: on_done provided but command stack is not empty. Skipping ' + str(on_done))
+      on_done = args['on_done']
+    if 'on_change' in args:
+      on_change = args['on_change']
+    if 'on_cancel' in args:
+      on_cancel = args['on_cancel']
+
+    self.input_panel(context, args['caption'], initial_text, on_done, on_change, on_cancel)
+    return False
+
+class CommandoOkCancelDialogCommand(plugin.ApplicationCommando):
+  def cmd(self, context, input, args):
+    if 'string' in args:
+      string = args['string']
+    else:
+      string = 'Are you sure?'
+
+    if not sublime.ok_cancel_dialog(string):
+      return False
+
+    # pass the input through
+    context['input'] = input
+
+class CommandoSwitchCommand(plugin.ApplicationCommando):
+  def cmd(self, context, input, args):
+    if input in args:
+      context['commands'] = args[input] + context['commands']
+
+
+class SimpleInsertCommand(sublime_plugin.TextCommand):
+  def run(self, edit, contents):
+    self.view.insert(edit, 0, contents)
+    self.view.run_command("goto_line", {"line":1})
+
+class CommandoProcess(threading.Thread):
   def __init__(self, cmd, on_done, input=None, env=None, path=None, encoding="utf-8"):
     super(CommandoProcess, self).__init__()
     self.proc = None
@@ -85,216 +277,9 @@ class CommandoProcess(threading.Thread):
   def exit_code(self):
     return self.proc.poll()
 
-###
-###
-###
-
-class CommandoKillCommand(sublime_plugin.WindowCommand):
-  def run(self):
-    sublime.run_command("commando_exec", {"cmd_args": {"kill": True}})
-#
-# Helper commands
-#
-
-class CommandoExecCommand(plugin.ApplicationCommando):
-  """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
-  proc = None
-  encoding = None
-  killed = False
-
-  output = ""
-  loop = 0
-  longrun = False
-
-  def cmd(self, input, args):
-    # override default behavior with params if provided
-    if 'context' in args:
-      self.context = args['context']
-    if 'callback' in args:
-      self.callback = args['callback']
-
-    if self.proc and 'kill' not in args:
-      # ignore overlapping commando calls
-      return
-
-    # kill running proc (if exists)
-    if 'kill' in args:
-      devlog(self.proc)
-      if self.proc:
-        self.proc.kill()
-        self.proc = None
-        self.killed = True
-      return
-
-    if not 'cmd' in args:
-      return
-
-    if 'encoding' in args:
-      encoding = args['encoding']
-    else:
-      encoding = 'utf-8'
-
-    self.proc = None
-
-    if 'working_dir' in args:
-      working_dir = args['working_dir']
-    else:
-      working_dir = self.get_working_dir()
-
-    # Change to the working dir, rather than spawning the process with it,
-    # so that emitted working dir relative path names make sense
-    if working_dir is not None:
-      os.chdir(working_dir)
-
-    if 'env' in args:
-      env = args['env']
-    else:
-      env = {}
-
-    try:
-      self.proc_cmd = self._do_var_subs(args['cmd'])
-      self.proc = CommandoProcess(args['cmd'], self.finish, input=input, env=env, encoding=encoding)
-      self.proc.start()
-
-      self.longrun = False
-      sublime.set_timeout(self.watch_proc, 500)
-
-    except Exception as e:
-      self.finish(1, None, str(e))
-
-    # we're handling our own callback, so cancel the bubble
-    return False
-
-  def is_enabled(self, kill=False):
-    if kill:
-      return (self.proc != None) and self.proc.poll()
-    else:
-      return True
-
-  def watch_proc(self):
-    self.loop = (self.loop+1) % 4
-
-    if self.proc is not None and self.proc.poll():
-      # we don't want to flash the status bar with commands that run quickly,
-      # so we only show status bar after the first watch_proc call
-      self.longrun = True
-      sublime.status_message('running[' + ' '.join(self.proc_cmd) + ']' +
-                             '.' * self.loop + ' ' * (3 - self.loop))
-      sublime.set_timeout(lambda: self.watch_proc(), 200)
-
-    elif self.longrun:
-      msg = ' '.join(self.proc_cmd) + ':'
-      if self.killed:
-        msg += ' Killed!'
-      else:
-        msg += ' Done!'
-      sublime.status_message(msg)
-      sublime.set_timeout(lambda: sublime.status_message(''), 3000)
-
-  def finish(self, exitcode, stdout, stderr):
-    self.proc = None
-    if exitcode:
-      sublime.error_message("Error (" + str(exitcode) + "): " + stderr)
-    elif self.callback:
-      self.commando(self.callback, input=stdout+stderr)
-
-class SimpleInsertCommand(sublime_plugin.TextCommand):
-  def run(self, edit, contents):
-    self.view.insert(edit, 0, contents)
-    self.view.run_command("goto_line", {"line":1})
-
-class CommandoShowPanelCommand(plugin.ApplicationCommando):
-  def cmd(self, input, args):
-    if input:
-      panel(self._get_context(), input)
-
 class CommandoNewFileWatcher(sublime_plugin.EventListener):
   def on_pre_close(self, view):
-    callback = view.settings().get('callback')
     context = view.settings().get('context')
-    if context and callback:
-      content = view.substr(sublime.Region(0, view.size()))
-      commando(context, callback, input=content)
-    pass
-
-class CommandoNewFileCommand(plugin.ApplicationCommando):
-  def cmd(self, input, args):#name=None, scratch=None, ro=None, syntax=None):
-    if input and input.rstrip() != '':
-      name = scratch = ro = syntax = None
-      if 'name' in args:
-        name = args['name']
-      if 'scratch' in args:
-        scratch = args['scratch']
-      if 'ro' in args:
-        ro = args['ro']
-      if 'syntax' in args:
-        syntax = args['syntax']
-      view = self.new_file(input.rstrip(), name=name, scratch=scratch, ro=ro, syntax=syntax)
-      view.settings().set('callback', self.callback)
-      view.settings().set('context', self.context)
-
-    return False # cancel callback chain
-
-class CommandoOpenFileCommand(plugin.ApplicationCommando):
-  def cmd(self, input, args):
-    if os.path.exists(input):
-      view = self.open_file(input)
-      view.settings().set('callback', self.callback)
-      view.settings().set('context', self.context)
-
-    return False # need to handle our own callback here
-
-class CommandoQuickPanelCommand(plugin.ApplicationCommando):
-  def cmd(self, input, args):#on_done=None):
-    if 'on_done' in args:
-      on_done = args['on_done']
-    else:
-      on_done = self.callback
-
-    if input:
-      self.quick_panel(input, on_done)
-    else:
-      self.quick_panel([['Nothing to select.']], on_done)
-
-    return False
-
-class CommandoInputPanelCommand(plugin.ApplicationCommando):
-  def cmd(self, input, args):#on_done=None, on_change=None, on_cancel=None):
-    if not 'caption' in args:
-      return False
-
-    on_done = self.callback # by default, on_done is the remaining callback stack
-
-    initial_text = ""
-    on_change = on_cancel = None
-
-    if 'initial_text' in args:
-      initial_text = args['initial_text']
-    if 'on_done' in args:
-      if on_done:
-        print('Warning: on_done provided but command stack is not empty. Skipping ' + str(on_done))
-      on_done = args['on_done']
-    if 'on_change' in args:
-      on_change = args['on_change']
-    if 'on_cancel' in args:
-      on_cancel = args['on_cancel']
-
-    self.input_panel(args['caption'], initial_text, on_done, on_change, on_cancel)
-    return False
-
-class CommandoOkCancelDialogCommand(plugin.ApplicationCommando):
-  def cmd(self, input, args):
-    if 'string' in args:
-      string = args['string']
-    else:
-      string = 'Are you sure?'
-
-    if sublime.ok_cancel_dialog(string):
-      return input # pass the input through to the next command
-
-    return False
-
-class CommandoSwitchCommand(plugin.ApplicationCommando):
-  def cmd(self, input, args):
-    if input in args:
-      self.callback = args[input] + self.callback
+    if context:
+      context['input'] = view.substr(sublime.Region(0, view.size()))
+      commando(context)

@@ -45,8 +45,14 @@ def get_active_view_id():
     return sublime.active_window().active_view().id()
   return None
 
-def get_active_context():
-  return {"window_id": get_active_window_id(), "view_id": get_active_view_id()}
+def init_active_context():
+  return {
+    "window_id": get_active_window_id(),
+    "view_id": get_active_view_id(),
+    "args": {},
+    "input": None,
+    "commands": []
+  }
 
 def get_window_by_id(window_id):
   for window in sublime.windows():
@@ -84,10 +90,12 @@ def panel(context, content, name="commando"):
 def quick_panel(context, items, on_done_cmd, flags=sublime.MONOSPACE_FONT, selected_idx=-1, on_highlighted_cmd=None):
   def on_done(i):
     if on_done_cmd and i != -1:
-      commando(context, on_done_cmd, input=items[i])
+      context['input'] = items[i]
+      commando(context, on_done_cmd)
   def on_highlighted(i):
     if on_highlighted_cmd and i != -1:
-      commando(context, on_highlighted_cmd, input=items[i])
+      context['input'] = items[i]
+      commando(context, on_highlighted_cmd)
 
   get_window_by_context(context).show_quick_panel(items, on_done, flags, selected_idx, on_highlighted)
 
@@ -104,7 +112,7 @@ def input_panel(context, caption, initial_text, on_done_cmd, on_change_cmd=None,
 
   get_window_by_context(context).show_input_panel(caption, initial_text, on_done, on_change, on_cancel)
 
-def new_file(context, content, name=None, scratch=None, ro=None, syntax=None):
+def new_file(context, content, name=None, scratch=None, readonly=None, syntax=None):
   new_view = get_window_by_context(context).new_file()
   if name:
     new_view.set_name(name)
@@ -113,7 +121,7 @@ def new_file(context, content, name=None, scratch=None, ro=None, syntax=None):
   if syntax:
     new_view.set_syntax_file("Packages/"+syntax+"/"+syntax+".tmLanguage")
   new_view.run_command("simple_insert", {"contents": content})
-  if ro:
+  if readonly:
     new_view.set_read_only(True)
   return new_view
 
@@ -137,27 +145,29 @@ def open_file(context, filename):
     sublime.error_message('File not found:' + filename)
     return None
 
-def exec_command(cmd, input=None, working_dir=None, env=None, context=None, callback=None):
+def exec_command(cmd, input=None, working_dir=None, env=None, context=None, commands=None):
   # by default display the output in a panel
-  if callback is None:
-    callback = "app.commando_show_panel"
+  if commands is None:
+    commands = "commando_show_panel"
 
   sublime.run_command("commando_exec", {"cmd": cmd, "input":input, "working_dir": working_dir,
-                                        "env": env, "context": context, "callback": callback})
+                                        "env": env, "context": context, "commands": commands})
 
-def commando(context, commands, input=None):
-  if isinstance(commands, str):
-    commands = [commands]
-  elif not isinstance(commands, list):
-    commands = []
+def commando(context, commands=None):
+  if commands is not None:
+    context['commands'] = commands
 
-  next_command = commands.pop(0)
+  if not context['commands']:
+    return
+
+  if isinstance(context['commands'], str):
+    context['commands'] = [context['commands']]
+
+  next_command = context['commands'].pop(0)
 
   if isinstance(next_command, list):
-    cmd_args = next_command[1]
+    context['args'] = next_command[1]
     next_command = next_command[0]
-  else:
-    cmd_args = {}
 
   command_type = get_command_type(next_command)
 
@@ -169,7 +179,6 @@ def commando(context, commands, input=None):
 
   if command_type == 'app':
     runner = sublime
-
   elif command_type == 'window':
     if not context['window_id']:
       print('Context error (window)')
@@ -179,7 +188,6 @@ def commando(context, commands, input=None):
         print('Could not find window')
       else:
         runner = window
-
   elif command_type == 'text':
     if not context['window_id'] or not context['view_id']:
       print('Context error (view)')
@@ -193,6 +201,5 @@ def commando(context, commands, input=None):
     print('Unsupported command context')
 
   if runner:
-    runner.run_command(next_command, {"context": context, "callback": commands,
-                                      "input": input, "cmd_args": cmd_args})
+    runner.run_command(next_command, {"context": context})
 
