@@ -1,3 +1,6 @@
+"""Commando - Plugin helpers.
+
+"""
 import sublime, sublime_plugin
 import os
 from . import core
@@ -18,20 +21,20 @@ class Commando:
   def _get_view_id(self):
     return core.get_active_view_id()
 
-  def _do_var_subs(self, items):
+  def _do_var_subs(self, context, items):
     if isinstance(items, list):
       for i, val in enumerate(items):
-        items[i] = self._var_sub(val)
+        items[i] = self._var_sub(context, val)
     elif isinstance(items, list):
       for k, val in items.iteritems():
-        items[k] = self._var_sub(val)
+        items[k] = self._var_sub(context, val)
 
-  def _var_sub(self, val):
+  def _var_sub(self, context, val):
     if val == '$file':
-      if self.get_view() and self.get_view().file_name():
-        return self.get_view().file_name()
+      if self.get_view(context) and self.get_view(context).file_name():
+        return self.get_view(context).file_name()
     if val == '$input':
-      return self.input
+      return context['input']
     return val
 
   def run(self, context=None):
@@ -39,7 +42,7 @@ class Commando:
       context = self.init_context()
 
     # process the arg vars
-    self._do_var_subs(context['args'])
+    self._do_var_subs(context, context['args'])
 
     # allow the user to override input through command args
     if 'input' in context['args']:
@@ -57,6 +60,7 @@ class Commando:
 
     # continue the chain
     if ret != False:
+      core.devlog("FFF:"+str(context))
       self.commando(context)
 
   def commando(self, context, commands=None):
@@ -65,10 +69,14 @@ class Commando:
   def cmd(self, context):
     pass
 
-  def get_window(self, context):
+  def get_window(self, context=None):
+    if context is None:
+      context = self.init_context()
     return core.get_window_by_context(context)
 
-  def get_view(self, context):
+  def get_view(self, context=None):
+    if context is None:
+      context = self.init_context()
     return core.get_view_by_context(context)
 
   # Note: This goes here instead of in the inherited classes because we're
@@ -109,12 +117,12 @@ class Commando:
   def quick_panel(self, context, items, on_done):
     core.quick_panel(context, items, on_done)
 
-  def input_panel(self, context, caption, initial_text, on_done, on_change, on_cancel):
+  def input_panel(self, context, caption, initial_text, on_done, on_change=None, on_cancel=None):
     core.input_panel(context, caption, initial_text, on_done, on_change, on_cancel)
 
-  def new_file(self, context, content, name=None, scratch=None, ro=None, syntax=None):
+  def new_file(self, context, content, name=None, scratch=None, readonly=None, syntax=None):
     if content and content.rstrip() != '':
-      return core.new_file(context, content.rstrip(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+      return core.new_file(context, content.rstrip(), name=name, scratch=scratch, readonly=readonly, syntax=syntax)
     return None
 
   def open_file(self, context, filename):
@@ -129,11 +137,13 @@ class WindowCommando(Commando, sublime_plugin.WindowCommand):
     return self.window.id()
 
 class TextCommando(Commando, sublime_plugin.TextCommand):
-  def run(self, edit, context=None, commands=None, input=None, cmd_args=None):
-    if cmd_args is None:
-      cmd_args = {}
-    cmd_args['edit'] = edit
-    return Commando.run(self, context=context, commands=commands, input=input, cmd_args=cmd_args)
+  def run(self, edit, context=None):
+    if context is None:
+      context = self.init_context()
+    if context['args'] is None:
+      context['args'] = {}
+    context['args']['edit'] = edit
+    return Commando.run(self, context=context)
 
   def _get_window_id(self):
     return self.view.window().id()

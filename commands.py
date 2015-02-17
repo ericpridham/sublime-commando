@@ -1,3 +1,6 @@
+"""Commando - Sublime command builder commands.
+
+"""
 import sublime, sublime_plugin
 import os, sys
 import threading
@@ -6,25 +9,25 @@ import functools
 from . import plugin, core
 
 class CommandoCommand(plugin.ApplicationCommando):
+  """Sublime command wrapping around core.commando()"""
   def run(self, commands=None):
     if commands:
-      core.commando(core.get_active_context(), commands)
+      core.commando(core.init_active_context(), commands)
 
 class CommandoExecCommand(plugin.ApplicationCommando):
   """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
-  proc = None
+  proc     = None
   encoding = None
-  killed = False
-
-  output = ""
-  loop = 0
-  longrun = False
+  killed   = False
+  output   = ""
+  loop     = 0
+  longrun  = False
 
   def cmd(self, context, input, args):
     # override default behavior with params if provided
     if self.proc and 'kill' not in args:
-      # ignore overlapping commando calls
-      return
+      # ignore overlapping commando_exec calls
+      return False
 
     # kill running proc (if exists)
     if 'kill' in args:
@@ -32,10 +35,10 @@ class CommandoExecCommand(plugin.ApplicationCommando):
         self.proc.kill()
         self.proc = None
         self.killed = True
-      return
+      return False
 
     if not 'cmd' in args:
-      return
+      return False
 
     if 'encoding' in args:
       encoding = args['encoding']
@@ -60,7 +63,7 @@ class CommandoExecCommand(plugin.ApplicationCommando):
       env = {}
 
     try:
-      self._do_var_subs(args['cmd'])
+      self._do_var_subs(context, args['cmd'])
       self.proc_cmd = args['cmd']
       self.proc = CommandoProcess(args['cmd'], functools.partial(self.finish, context),
         input=input, env=env, encoding=encoding)
@@ -120,16 +123,16 @@ class CommandoShowPanelCommand(plugin.ApplicationCommando):
 class CommandoNewFileCommand(plugin.ApplicationCommando):
   def cmd(self, context, input, args):#name=None, scratch=None, ro=None, syntax=None):
     if input and input.rstrip() != '':
-      name = scratch = ro = syntax = None
+      name = scratch = readonly = syntax = None
       if 'name' in args:
         name = args['name']
       if 'scratch' in args:
         scratch = args['scratch']
-      if 'ro' in args:
-        ro = args['ro']
+      if 'readonly' in args:
+        ro = args['readonly']
       if 'syntax' in args:
         syntax = args['syntax']
-      view = self.new_file(input.rstrip(), name=name, scratch=scratch, ro=ro, syntax=syntax)
+      view = self.new_file(context, input.rstrip(), name=name, scratch=scratch, readonly=readonly, syntax=syntax)
       view.settings().set('context', context)
 
     return False
@@ -195,6 +198,19 @@ class CommandoSwitchCommand(plugin.ApplicationCommando):
   def cmd(self, context, input, args):
     if input in args:
       context['commands'] = args[input] + context['commands']
+
+class CommandoArgCommand(plugin.ApplicationCommando):
+  def cmd(self, context, input, args):
+    if 'name' in args:
+      context['args'] = args # passthrough previous args
+      commands = ['commando_add_arg']+context['commands']
+      self.input_panel(context, args['name'], "", commands)
+    return False
+
+class CommandoAddArgCommand(plugin.ApplicationCommando):
+  def cmd(self, context, input, args):
+    context['args'] = args
+    context['args'][args['name']] = input
 
 
 class SimpleInsertCommand(sublime_plugin.TextCommand):
@@ -282,4 +298,4 @@ class CommandoNewFileWatcher(sublime_plugin.EventListener):
     context = view.settings().get('context')
     if context:
       context['input'] = view.substr(sublime.Region(0, view.size()))
-      commando(context)
+      core.commando(context)
