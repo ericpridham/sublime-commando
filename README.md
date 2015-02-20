@@ -14,7 +14,7 @@ First, you can quickly build your own commands through custom keymap actions.  J
 { "keys": ["ctrl+shift+d"], "command": "commando", "args": {
   "commands": [
     ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
-    ["commando_new_file", {"syntax": "Diff", "scratch": true, "ro": true, "name": "Git Diff"}]
+    ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
   ]
 }}
 ```
@@ -36,7 +36,7 @@ class GitDiffFileCommand(CommandoRun):
   def commands(self):
     return [
       ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
-      ["commando_new_file", {"syntax": "Diff", "scratch": True, "ro": True, "name": "Git Diff"}]
+      ["commando_new_file", {"syntax": "Diff", "scratch": True, "readonly": True, "name": "Git Diff"}]
     ]
 ```
 

@@ -128,7 +128,7 @@ class CommandoNewFileCommand(plugin.CommandoCmd):
       if 'scratch' in args:
         scratch = args['scratch']
       if 'readonly' in args:
-        ro = args['readonly']
+        readonly = args['readonly']
       if 'syntax' in args:
         syntax = args['syntax']
       view = core.new_file(context, input.rstrip(), name=name, scratch=scratch, readonly=readonly, syntax=syntax)
