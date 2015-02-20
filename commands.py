@@ -182,12 +182,12 @@ class CommandoInputPanelCommand(plugin.CommandoCmd):
 
 class CommandoOkCancelDialogCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
-    if 'string' in args:
-      string = args['string']
+    if 'msg' in args:
+      msg = args['msg']
     else:
-      string = 'Are you sure?'
+      msg = 'Are you sure?'
 
-    if not sublime.ok_cancel_dialog(string):
+    if not sublime.ok_cancel_dialog(msg):
       return False
 
     # pass the input through

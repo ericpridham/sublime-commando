@@ -17,15 +17,20 @@ class CommandoRun(sublime_plugin.ApplicationCommand):
     """Overwrite in child class."""
     return None
 
-  def get_window(self):
-    return core.get_window_by_context(core.init_active_context())
+  def get_window(self, context=None):
+    if context is None:
+      context = core.init_active_context()
+    return core.get_window_by_context(context)
 
-  def get_view(self):
-    return core.get_view_by_context(core.init_active_context())
+  def get_view(self, context=None):
+    if context is None:
+      context = core.init_active_context()
+    return core.get_view_by_context(context)
 
-  def get_path(self):
+  def get_path(self, context=None):
     """Grab the path to the current context."""
-    context = core.init_active_context()
+    if context is None:
+      context = core.init_active_context()
     return core.get_working_dir(context)
 
 class CommandoCmd(sublime_plugin.ApplicationCommand):
