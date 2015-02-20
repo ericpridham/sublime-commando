@@ -96,6 +96,21 @@ def get_view_by_context(context):
     return sublime.active_window().active_view()
   return None
 
+def get_working_dir(context):
+  window = get_window_by_context(context)
+  view = get_view_by_context(context)
+  if window and window.folders():
+    # find the folder that is a subset of the full file path
+    if view and view.file_name():
+      for folder in window.folders():
+        if view.file_name().find(folder) == 0:
+          return folder
+    # otherwise, just use the first folder
+    return window.folders()[0]
+  if view and view.file_name():
+    return os.path.dirname(view.file_name())
+  return None
+
 def panel(context, content, name="commando"):
   """Display a Sublime panel in the provided context."""
   if content and content.rstrip() != '':
@@ -109,11 +124,11 @@ def quick_panel(context, items, on_done_cmd, flags=sublime.MONOSPACE_FONT, selec
   def on_done(i):
     if on_done_cmd and i != -1:
       context['input'] = items[i]
-      commando(context, on_done_cmd)
+      run_commando(on_done_cmd, context=context)
   def on_highlighted(i):
     if on_highlighted_cmd and i != -1:
       context['input'] = items[i]
-      commando(context, on_highlighted_cmd)
+      run_commando(on_highlighted_cmd, context=context)
 
   get_window_by_context(context).show_quick_panel(items, on_done, flags, selected_idx, on_highlighted)
 
@@ -122,14 +137,14 @@ def input_panel(context, caption, initial_text, on_done_cmd, on_change_cmd=None,
   def on_done(input_string):
     if on_done_cmd and input_string:
       context['input'] = input_string
-      commando(context, on_done_cmd)
+      run_commando(on_done_cmd, context=context)
   def on_change(input_string):
     if on_change_cmd and input_string:
       context['input'] = input_string
-      commando(context, on_change_cmd)
+      run_commando(on_change_cmd, context=context)
   def on_cancel():
     if on_cancel_cmd:
-      commando(context, on_cancel_cmd)
+      run_commando(on_cancel_cmd, context=context)
 
   get_window_by_context(context).show_input_panel(caption, initial_text, on_done, on_change, on_cancel)
 
@@ -169,16 +184,22 @@ def open_file(context, filename):
     sublime.error_message('File not found:' + filename)
     return None
 
-def commando(context, commands=None):
-  """Process the provided sequence of commands."""
+def run_commando(commands, context=None):
+  if context is None:
+    context = init_active_context()
+
+  if isinstance(commands, str):
+    commands = [commands]
+
   if commands is not None:
     context['commands'] = commands
 
+  # and go!
+  next_commando(context)
+
+def next_commando(context):
   if not context['commands']:
     return
-
-  if isinstance(context['commands'], str):
-    context['commands'] = [context['commands']]
 
   next_command = context['commands'].pop(0)
 

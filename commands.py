@@ -8,13 +8,10 @@ import subprocess
 import functools
 from . import plugin, core
 
-class CommandoCommand(plugin.ApplicationCommando):
-  """Sublime command wrapping around core.commando()"""
-  def run(self, commands=None):
-    if commands:
-      core.commando(core.init_active_context(), commands)
+class CommandoCommand(plugin.CommandoRun):
+  pass
 
-class CommandoExecCommand(plugin.ApplicationCommando):
+class CommandoExecCommand(plugin.CommandoCmd):
   """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
   proc     = None
   encoding = None
@@ -50,7 +47,7 @@ class CommandoExecCommand(plugin.ApplicationCommando):
     if 'working_dir' in args:
       working_dir = args['working_dir']
     else:
-      working_dir = self.get_working_dir(context)
+      working_dir = core.get_working_dir(context)
 
     # Change to the working dir, rather than spawning the process with it,
     # so that emitted working dir relative path names make sense
@@ -109,18 +106,20 @@ class CommandoExecCommand(plugin.ApplicationCommando):
       sublime.error_message("Error (" + str(exitcode) + "): " + stderr)
     elif context['commands']:
       context['input'] = stdout+stderr
-      self.commando(context)
+      core.next_commando(context)
 
-class CommandoKillCommand(sublime_plugin.WindowCommand):
-  def run(self):
-    sublime.run_command("commando_exec", {"cmd_args": {"kill": True}})
+class CommandoKillCommand(plugin.CommandoRun):
+  def commands(self):
+    return [
+      ["commando_exec", {"kill": True}]
+    ]
 
-class CommandoShowPanelCommand(plugin.ApplicationCommando):
+class CommandoShowPanelCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
     if input:
-      self.panel(context, input)
+      core.panel(context, input)
 
-class CommandoNewFileCommand(plugin.ApplicationCommando):
+class CommandoNewFileCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):#name=None, scratch=None, ro=None, syntax=None):
     if input and input.rstrip() != '':
       name = scratch = readonly = syntax = None
@@ -132,19 +131,19 @@ class CommandoNewFileCommand(plugin.ApplicationCommando):
         ro = args['readonly']
       if 'syntax' in args:
         syntax = args['syntax']
-      view = self.new_file(context, input.rstrip(), name=name, scratch=scratch, readonly=readonly, syntax=syntax)
+      view = core.new_file(context, input.rstrip(), name=name, scratch=scratch, readonly=readonly, syntax=syntax)
       view.settings().set('context', context)
 
     return False
 
-class CommandoOpenFileCommand(plugin.ApplicationCommando):
+class CommandoOpenFileCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
     if os.path.exists(input):
-      view = self.open_file(input)
+      view = core.open_file(context, input)
       view.settings().set('context', context)
     return False
 
-class CommandoQuickPanelCommand(plugin.ApplicationCommando):
+class CommandoQuickPanelCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):#on_done=None):
     if 'on_done' in args:
       on_done = args['on_done']
@@ -152,11 +151,11 @@ class CommandoQuickPanelCommand(plugin.ApplicationCommando):
       on_done = context['commands']
 
     if input:
-      self.quick_panel(context, input, on_done)
+      core.quick_panel(context, input, on_done)
 
     return False
 
-class CommandoInputPanelCommand(plugin.ApplicationCommando):
+class CommandoInputPanelCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):#on_done=None, on_change=None, on_cancel=None):
     if not 'caption' in args:
       return False
@@ -178,10 +177,10 @@ class CommandoInputPanelCommand(plugin.ApplicationCommando):
     if 'on_cancel' in args:
       on_cancel = args['on_cancel']
 
-    self.input_panel(context, args['caption'], initial_text, on_done, on_change, on_cancel)
+    core.input_panel(context, args['caption'], initial_text, on_done, on_change, on_cancel)
     return False
 
-class CommandoOkCancelDialogCommand(plugin.ApplicationCommando):
+class CommandoOkCancelDialogCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
     if 'string' in args:
       string = args['string']
@@ -194,23 +193,24 @@ class CommandoOkCancelDialogCommand(plugin.ApplicationCommando):
     # pass the input through
     context['input'] = input
 
-class CommandoSwitchCommand(plugin.ApplicationCommando):
+class CommandoSwitchCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
     if input in args:
       context['commands'] = args[input] + context['commands']
 
-class CommandoArgCommand(plugin.ApplicationCommando):
+class CommandoArgCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
     if 'name' in args:
       context['args'] = args # passthrough previous args
       commands = ['commando_add_arg']+context['commands']
-      self.input_panel(context, args['name'], "", commands)
+      core.input_panel(context, args['name'], "", commands)
     return False
 
-class CommandoAddArgCommand(plugin.ApplicationCommando):
+class CommandoAddArgCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
     context['args'] = args
     context['args'][args['name']] = input
+
 
 
 class SimpleInsertCommand(sublime_plugin.TextCommand):
@@ -298,4 +298,4 @@ class CommandoNewFileWatcher(sublime_plugin.EventListener):
     context = view.settings().get('context')
     if context:
       context['input'] = view.substr(sublime.Region(0, view.size()))
-      core.commando(context)
+      core.next_commando(context)
