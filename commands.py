@@ -138,9 +138,10 @@ class CommandoNewFileCommand(plugin.CommandoCmd):
 
 class CommandoOpenFileCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
-    if os.path.exists(input):
-      view = core.open_file(context, input)
-      view.settings().set('context', context)
+    if os.path.exists(input.strip()):
+      view = core.open_file(context, input.strip())
+      if view:
+        view.settings().set('context', context)
     return False
 
 class CommandoQuickPanelCommand(plugin.CommandoCmd):
@@ -195,8 +196,11 @@ class CommandoOkCancelDialogCommand(plugin.CommandoCmd):
 
 class CommandoSwitchCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
+    input = input.strip()
     if input in args:
       context['commands'] = args[input] + context['commands']
+    elif 'default' in args:
+      context['commands'] = args['default'] + context['commands']
 
 class CommandoArgCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
@@ -211,6 +215,19 @@ class CommandoAddArgCommand(plugin.CommandoCmd):
     context['args'] = args
     context['args'][args['name']] = input
 
+class CommandoSplitCommand(plugin.CommandoCmd):
+  def cmd(self, context, input, args):
+    if 'sep' in args:
+      sep = args['sep']
+    else:
+      sep = "\n"
+
+    if 'limit' in args:
+      limit = args['limit']
+    else:
+      limit = -1
+
+    context['input'] = input.split(sep, limit)
 
 
 class SimpleInsertCommand(sublime_plugin.TextCommand):

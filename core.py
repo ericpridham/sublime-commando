@@ -124,7 +124,8 @@ def quick_panel(context, items, on_done_cmd, flags=sublime.MONOSPACE_FONT, selec
   def on_done(i):
     if on_done_cmd and i != -1:
       context['input'] = items[i]
-      run_commando(on_done_cmd, context=context)
+      context['commands'] = on_done_cmd + context['commands']
+      next_commando(context)
   def on_highlighted(i):
     if on_highlighted_cmd and i != -1:
       context['input'] = items[i]
@@ -136,8 +137,8 @@ def input_panel(context, caption, initial_text, on_done_cmd, on_change_cmd=None,
   """Open a Sublime input_panel in the provided context."""
   def on_done(input_string):
     if on_done_cmd and input_string:
-      context['input'] = input_string
-      run_commando(on_done_cmd, context=context)
+      context['commands'] = on_done_cmd + context['commands']
+      next_commando(context)
   def on_change(input_string):
     if on_change_cmd and input_string:
       context['input'] = input_string
@@ -156,7 +157,11 @@ def new_file(context, content, name=None, scratch=None, readonly=None, syntax=No
   if scratch:
     new_view.set_scratch(True)
   if syntax:
-    new_view.set_syntax_file("Packages/"+syntax+"/"+syntax+".tmLanguage")
+    if syntax.find('/') < 0:
+      syntax_file = "Packages/"+syntax+"/"+syntax+".tmLanguage"
+    else:
+      syntax_file = syntax
+    new_view.set_syntax_file(syntax_file)
   new_view.run_command("simple_insert", {"contents": content})
   if readonly:
     new_view.set_read_only(True)
