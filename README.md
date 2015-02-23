@@ -62,5 +62,5 @@ git clone https://github.com/ericpridham/sublime-commando.git Commando
 
 # Get Into It
 
-Check out [the wiki](../../wiki) for full documentation.
+Check out [the wiki](https://github.com/ericpridham/sublime-commando/wiki) for full documentation.
 
