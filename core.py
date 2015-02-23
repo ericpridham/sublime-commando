@@ -124,8 +124,7 @@ def quick_panel(context, items, on_done_cmd, flags=sublime.MONOSPACE_FONT, selec
   def on_done(i):
     if on_done_cmd and i != -1:
       context['input'] = items[i]
-      context['commands'] = on_done_cmd + context['commands']
-      next_commando(context)
+      run_commando(on_done_cmd, context=context)
   def on_highlighted(i):
     if on_highlighted_cmd and i != -1:
       context['input'] = items[i]
@@ -137,8 +136,8 @@ def input_panel(context, caption, initial_text, on_done_cmd, on_change_cmd=None,
   """Open a Sublime input_panel in the provided context."""
   def on_done(input_string):
     if on_done_cmd and input_string:
-      context['commands'] = on_done_cmd + context['commands']
-      next_commando(context)
+      context['input'] = input_string
+      run_commando(on_done_cmd, context=context)
   def on_change(input_string):
     if on_change_cmd and input_string:
       context['input'] = input_string

@@ -6,6 +6,7 @@ import os, sys
 import threading
 import subprocess
 import functools
+import re
 from . import plugin, core
 
 class CommandoCommand(plugin.CommandoRun):
@@ -60,6 +61,7 @@ class CommandoExecCommand(plugin.CommandoCmd):
       env = {}
 
     try:
+      context['input'] = input # for variable subsitution
       self._do_var_subs(context, args['cmd'])
       self.proc_cmd = args['cmd']
       self.proc = CommandoProcess(args['cmd'], functools.partial(self.finish, context),
@@ -147,7 +149,7 @@ class CommandoOpenFileCommand(plugin.CommandoCmd):
 class CommandoQuickPanelCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):#on_done=None):
     if 'on_done' in args:
-      on_done = args['on_done']
+      on_done = args['on_done'] + context['commands']
     else:
       on_done = context['commands']
 
@@ -170,9 +172,7 @@ class CommandoInputPanelCommand(plugin.CommandoCmd):
     if 'initial_text' in args:
       initial_text = args['initial_text']
     if 'on_done' in args:
-      if on_done:
-        print('Warning: on_done provided but command stack is not empty. Skipping ' + str(on_done))
-      on_done = args['on_done']
+      on_done = args['on_done'] + on_done
     if 'on_change' in args:
       on_change = args['on_change']
     if 'on_cancel' in args:
@@ -225,10 +225,35 @@ class CommandoSplitCommand(plugin.CommandoCmd):
     if 'limit' in args:
       limit = args['limit']
     else:
-      limit = -1
+      limit = 0
 
-    context['input'] = input.split(sep, limit)
+    if 'strip' in args:
+      strip = args['strip']
+    else:
+      strip = True
 
+    if isinstance(input, str):
+      if strip:
+        input = input.strip()
+      new_input = re.split(sep, input, maxsplit=limit)
+    elif isinstance(input, list):
+      new_input = self.splitstrings(input, strip, sep, limit)
+
+    context['input'] = new_input
+
+  def splitstrings(self, lines, strip, sep, limit):
+    if not isinstance(lines, list):
+      return
+
+    splits = []
+    for line in lines:
+      if isinstance(line, list):
+        splits.append(self.splitstrings(line, strip, sep, limit))
+      elif isinstance(line, str):
+        if strip:
+          line = line.strip()
+        splits.append(re.split(sep, line, maxsplit=limit))
+    return splits
 
 class SimpleInsertCommand(sublime_plugin.TextCommand):
   def run(self, edit, contents):
