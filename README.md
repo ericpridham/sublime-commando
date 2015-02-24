@@ -124,6 +124,8 @@ Now hit `ctrl`+`shift`+`d` to do the diff as well.
 
 And that's it, now you can do a diff on the current file from anywhere!
 
+**Plugin**
+
 However, if you're like me, copy-pasting the same command in several places can get annoying.  If you want to take this a step further you can create your own named commands through a plugin.  Select `Tools` > `New Plugin...`, make the file look like this:
 
 ```python
