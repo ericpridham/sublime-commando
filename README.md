@@ -4,11 +4,21 @@ Commando is a command builder plugin for Sublime Text 3.
 
 # How do I use it?
 
-There are two ways to use Commando.
+A Commando command looks like this:
 
-## Built-In
+```json
+"command": "commando",
+"args": {
+  "commands": [
+    ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
+    ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
+  ]
+}
+```
 
-First, you can quickly build your own commands anywhere Sublime commands can be called.  Lets create a command that calls `git diff` on the current file and put it everywhere.
+This opens a thread that calls `git diff` on the file you currently have open and sends the output of that to a new tab called "Git Diff" with "Diff" syntax.  Pretty neat.
+
+Now you can put this anywhere commands can be configured in Sublime.  Let's add this command everywhere.
 
 **Menus**
 
@@ -33,7 +43,7 @@ In your `Packages/User/` directory create these files:
                   ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
                   ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
                 ]
-              }
+            }
           }
         ]
       }
@@ -108,13 +118,7 @@ This also works in keymaps files.  Add this to your `Packages/User/Default (<You
 
 Now hitting `ctrl`+`shift`+`d` do the diff as well.
 
-## Plugins
-
-Commando also makes this command building functionality available to plugin developers through a couple new classes,
-`CommandoRun` and `CommandoCmd`.
-
-`CommandoRun` is used to create new high-level commands. Essentialy it is a way of packaging a keymap action into it's
-own named command.  For example, you can create a new plugin file with this:
+Copy-pasting the same command in several places can get annoying, though, so if you want to take this a step further you can create your own named commands through a plugin.  Select `Tools` > `New Plugin...`, make the file look like this:
 
 ```python
 from Commando.plugin import CommandoRun
@@ -127,14 +131,30 @@ class GitDiffFileCommand(CommandoRun):
     ]
 ```
 
-And now you have a new Sublime command, `git_diff_file`.  Then you can update your keymap to just:
+and save it as *My Commands.py*.  Now you have a new Sublime command called `git_diff_file` that you can use everywhere in place of `commando`.  So this:
+
+```json
+[
+  {
+    "keys": ["ctrl+shift+d"],
+    "command": "commando",
+    "args": {
+      "commands": [
+        ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
+        ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
+      ]
+    }
+  }
+]
+```
+
+becomes this:
 
 ```json
 { "keys": ["ctrl+shift+d"], "command": "git_diff_file" },
 ```
 
-`CommandoCmd` is used to create your own individual commands that can be chained together in a commando run, like
-`commando_exec` and `command_new_file` in the above example.
+But wait, there's more!  There are already [several useful commando commands](https://github.com/ericpridham/sublime-commando/wiki/User-Documentation) you can use to build your own command, but if you need to you can also create your own if you want to.  *Documentation coming soon!  For now, check out `commands.py`.*
 
 # Installation
 
