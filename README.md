@@ -8,11 +8,67 @@ There are two ways to use Commando.
 
 ## Built-In
 
-First, you can quickly build your own commands anywhere Sublime commands can be called.
+First, you can quickly build your own commands anywhere Sublime commands can be called.  Lets create a command that calls `git diff` on the current file and put it everywhere.
+
+**Menus**
+
+In your `Packages/User/` directory create these files:
+
+*Main.sublime-menu*
+```json
+[
+  {
+    "caption": "Tools",
+    "id": "tools",
+    "children": [
+      {
+        "caption": "My Commands",
+        "id": "my-commands",
+        "children": [
+          {
+            "caption": "Diff File",
+            "command": "commando",
+            "args": {
+                "commands": [
+                  ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
+                  ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
+                ]
+              }
+          }
+        ]
+      }
+    ]
+  }
+]
+```
+
+*Context.sublime-menu*
+```json
+[
+  {
+    "caption": "My Commands",
+    "id": "my-commands",
+    "children": [
+      {
+        "caption": "Diff File",
+        "command": "commando",
+        "args": {
+            "commands": [
+              ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
+              ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
+            ]
+          }
+      }
+    ]
+  }
+]
+```
+
+And now you have your own Tools > My Commands menu, as well as a context menu called My Commands (right click on any file).
 
 **Command Palette**
 
-To add a command to the Command Palette menu, create a new .sublime-commands file.  For instance, create a new file called `Packages/User/My Commands.sublime-commands` and put this in it:
+To add a command to the Command Palette menu, create a new .sublime-commands file.  Create a new file called `Packages/User/My Commands.sublime-commands` and put this in it:
 
 ```json
 [
@@ -29,7 +85,7 @@ To add a command to the Command Palette menu, create a new .sublime-commands fil
 ]
 ```
 
-Now you can hit `super`+`shift`+`p`, type "Diff File" and this will call `git diff` on the current file you're in and send the output to a new tab.
+Now open up the command pallet and type "Diff File".
 
 **Keymaps**
 
@@ -50,7 +106,7 @@ This also works in keymaps files.  Add this to your `Packages/User/Default (<You
 ]
 ```
 
-Now hitting `ctrl`+`shift`+`d` will the same thing.
+Now hitting `ctrl`+`shift`+`d` do the diff as well.
 
 ## Plugins
 
