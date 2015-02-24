@@ -78,7 +78,7 @@ And now you have your own Tools > My Commands menu, as well as a context menu ca
 
 **Command Palette**
 
-To add a command to the Command Palette menu, create a new .sublime-commands file.  Create a new file called `Packages/User/My Commands.sublime-commands` and put this in it:
+Create another file in `Packages/User/` named `My Commands.sublime-commands` and put this in it:
 
 ```json
 [
@@ -99,10 +99,11 @@ Now open up the command pallet and type "Diff File".
 
 **Keymaps**
 
-This also works in keymaps files.  Add this to your `Packages/User/Default (<Your OS>).sublime-keymap` file:
+Finally, open up your `Packages/User/Default (<Your OS>).sublime-keymap` file and add this to your other keymaps:
 
 ```json
 [
+...
   {
     "keys": ["ctrl+shift+d"],
     "command": "commando",
@@ -113,12 +114,15 @@ This also works in keymaps files.  Add this to your `Packages/User/Default (<You
       ]
     }
   }
+...
 ]
 ```
 
-Now hitting `ctrl`+`shift`+`d` do the diff as well.
+Now hit `ctrl`+`shift`+`d` to do the diff as well.
 
-Copy-pasting the same command in several places can get annoying, though, so if you want to take this a step further you can create your own named commands through a plugin.  Select `Tools` > `New Plugin...`, make the file look like this:
+And that's it, now you can do a diff on the current file from anywhere!
+
+However, if you're like me, copy-pasting the same command in several places can get annoying.  If you want to take this a step further you can create your own named commands through a plugin.  Select `Tools` > `New Plugin...`, make the file look like this:
 
 ```python
 from Commando.plugin import CommandoRun
@@ -134,18 +138,16 @@ class GitDiffFileCommand(CommandoRun):
 and save it as *My Commands.py*.  Now you have a new Sublime command called `git_diff_file` that you can use everywhere in place of `commando`.  So this:
 
 ```json
-[
-  {
-    "keys": ["ctrl+shift+d"],
-    "command": "commando",
-    "args": {
-      "commands": [
-        ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
-        ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
-      ]
-    }
+{
+  "keys": ["ctrl+shift+d"],
+  "command": "commando",
+  "args": {
+    "commands": [
+      ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
+      ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
+    ]
   }
-]
+}
 ```
 
 becomes this:
