@@ -138,9 +138,13 @@ And now you have a new Sublime command, `git_diff_file`.  Then you can update yo
 
 # Installation
 
+## Package Control
+
+The package is registered in [Package Control](https://packagecontrol.io/) under the name `Commando`.
+
 ## Manual
 
-Clone this repository as a subdirectory of your Sublime Text 3 Packages directory with the name "Commando".  So, for instance:
+Clone this repository as a subdirectory of your Sublime Text 3 Packages directory with the name `Commando`.  So, for instance:
 
 ```bash
 cd ~/Library/Application\ Support/Sublime\ Text\ 3/Packages
