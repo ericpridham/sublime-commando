@@ -25,6 +25,7 @@ Now you can put this anywhere commands can be configured in Sublime.  Let's add 
 In your `Packages/User/` directory create these files:
 
 *Main.sublime-menu*
+
 ```json
 [
   {
@@ -53,6 +54,7 @@ In your `Packages/User/` directory create these files:
 ```
 
 *Context.sublime-menu*
+
 ```json
 [
   {
