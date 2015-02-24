@@ -6,9 +6,34 @@ Commando is a command builder plugin for Sublime Text 3.
 
 There are two ways to use Commando.
 
-## Keymaps
+## Built-In
 
-First, you can quickly build your own commands through custom keymap actions.  Just put this in a sublime-keymap file:
+First, you can quickly build your own commands anywhere Sublime commands can be called.
+
+**Command Palette**
+
+To add a command to the Command Palette menu, create a new .sublime-commands file.  For instance, create a new file called `Packages/User/My Commands.sublime-commands` and put this in it:
+
+```json
+[
+  {
+    "caption": "Diff File",
+    "command": "commando",
+    "args": {
+      "commands": [
+        ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
+        ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
+      ]
+    }
+  }
+]
+```
+
+Now you can hit `super`+`shift`+`p`, type "Diff File" and this will call `git diff` on the current file you're in and send the output to a new tab.
+
+**Keymaps**
+
+This also works in keymaps files.  Add this to your `Packages/User/Default (<Your OS>).sublime-keymap` file:
 
 ```json
 { "keys": ["ctrl+shift+d"], "command": "commando", "args": {
@@ -19,7 +44,7 @@ First, you can quickly build your own commands through custom keymap actions.  J
 }}
 ```
 
-This will run a `git diff` on the current file and output the results in a new tab.
+Now hitting `ctrl`+`shift`+`d` will the same thing.
 
 ## Plugins
 
