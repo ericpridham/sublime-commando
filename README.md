@@ -36,12 +36,18 @@ Now you can hit `super`+`shift`+`p`, type "Diff File" and this will call `git di
 This also works in keymaps files.  Add this to your `Packages/User/Default (<Your OS>).sublime-keymap` file:
 
 ```json
-{ "keys": ["ctrl+shift+d"], "command": "commando", "args": {
-  "commands": [
-    ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
-    ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
-  ]
-}}
+[
+  {
+    "keys": ["ctrl+shift+d"],
+    "command": "commando",
+    "args": {
+      "commands": [
+        ["commando_exec", {"cmd": ["git", "diff", "$file"]}],
+        ["commando_new_file", {"syntax": "Diff", "scratch": true, "readonly": true, "name": "Git Diff"}]
+      ]
+    }
+  }
+]
 ```
 
 Now hitting `ctrl`+`shift`+`d` will the same thing.
