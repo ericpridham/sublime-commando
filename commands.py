@@ -89,12 +89,12 @@ class CommandoExecCommand(plugin.CommandoCmd):
       # we don't want to flash the status bar with commands that run quickly,
       # so we only show status bar after the first watch_proc call
       self.longrun = True
-      sublime.status_message('running[' + ' '.join(self.proc_cmd) + ']' +
+      sublime.status_message(' '.join(self.proc_cmd) + ' in ' + os.getcwd() + ' ' +
                              '.' * self.loop + ' ' * (3 - self.loop))
       sublime.set_timeout(lambda: self.watch_proc(), 200)
 
     elif self.longrun:
-      msg = ' '.join(self.proc_cmd) + ':'
+      msg = ' '.join(self.proc_cmd) + ' in ' + os.getcwd() + ':'
       if self.killed:
         msg += ' Killed!'
       else:
