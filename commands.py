@@ -14,24 +14,21 @@ class CommandoCommand(plugin.CommandoRun):
 
 class CommandoExecCommand(plugin.CommandoCmd):
   """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
-  proc     = None
+  procs    = []
   encoding = None
   killed   = False
   output   = ""
   loop     = 0
-  longrun  = False
+  watching  = False
 
   def cmd(self, context, input, args):
-    # override default behavior with params if provided
-    if self.proc and 'kill' not in args:
-      # ignore overlapping commando_exec calls
-      return False
-
-    # kill running proc (if exists)
+    # kill all running procs (if exists)
     if 'kill' in args:
-      if self.proc:
-        self.proc.kill()
-        self.proc = None
+      if self.procs:
+        proc = self.procs.pop(0)
+        while proc:
+          proc.kill()
+        self.procs = []
         self.killed = True
       return False
 
@@ -42,8 +39,6 @@ class CommandoExecCommand(plugin.CommandoCmd):
       encoding = args['encoding']
     else:
       encoding = 'utf-8'
-
-    self.proc = None
 
     if 'working_dir' in args:
       working_dir = args['working_dir']
@@ -63,13 +58,14 @@ class CommandoExecCommand(plugin.CommandoCmd):
     try:
       context['input'] = input # for variable subsitution
       self._do_var_subs(context, args['cmd'])
-      self.proc_cmd = args['cmd']
-      self.proc = CommandoProcess(args['cmd'], functools.partial(self.finish, context),
+      new_proc = CommandoProcess(args['cmd'], functools.partial(self.finish, context),
         input=input, env=env, encoding=encoding)
-      self.proc.start()
+      new_proc.start()
+      self.procs.append(new_proc)
 
-      self.longrun = False
-      sublime.set_timeout(self.watch_proc, 500)
+      if not self.watching:
+        self.watching = True
+        sublime.set_timeout(self.update_procs_status, 500)
 
     except Exception as e:
       self.finish(context, 1, None, str(e))
@@ -78,32 +74,37 @@ class CommandoExecCommand(plugin.CommandoCmd):
 
   def is_enabled(self, kill=False):
     if kill:
-      return (self.proc != None) and self.proc.poll()
+      return self.procs
     else:
       return True
 
-  def watch_proc(self):
+  def update_procs_status(self):
     self.loop = (self.loop+1) % 4
 
-    if self.proc is not None and self.proc.poll():
+    if self.procs:
+      for i in range(0,len(self.procs)-1):
+        if not self.procs[i].poll():
+          del self.procs[i]
+
+    if self.procs[0].poll():
       # we don't want to flash the status bar with commands that run quickly,
       # so we only show status bar after the first watch_proc call
-      self.longrun = True
-      sublime.status_message(' '.join(self.proc_cmd) + ' in ' + os.getcwd() + ' ' +
-                             '.' * self.loop + ' ' * (3 - self.loop))
-      sublime.set_timeout(lambda: self.watch_proc(), 200)
-
-    elif self.longrun:
-      msg = ' '.join(self.proc_cmd) + ' in ' + os.getcwd() + ':'
+      # sublime.status_message(' '.join(self.proc_cmd) + ' in ' + os.getcwd() + ' ' +
+      #                        '.' * self.loop + ' ' * (3 - self.loop))
+      sublime.status_message('commando_exec running (' + str(len(self.procs)) + ' procs)'
+        + '.' * self.loop + ' ' * (3 - self.loop))
+      sublime.set_timeout(lambda: self.update_procs_status(), 200)
+    else:
+      msg = ''
       if self.killed:
         msg += ' Killed!'
       else:
         msg += ' Done!'
       sublime.status_message(msg)
       sublime.set_timeout(lambda: sublime.status_message(''), 3000)
+      self.watching = False
 
   def finish(self, context, exitcode, stdout, stderr):
-    self.proc = None
     if exitcode:
       sublime.error_message("Error (" + str(exitcode) + "): " + stderr)
     elif context['commands']:
@@ -123,28 +124,44 @@ class CommandoShowPanelCommand(plugin.CommandoCmd):
 
 class CommandoNewFileCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):#name=None, scratch=None, ro=None, syntax=None):
-    if input and input.rstrip() != '':
-      name = scratch = readonly = syntax = None
-      if 'name' in args:
-        name = args['name']
-      if 'scratch' in args:
-        scratch = args['scratch']
-      if 'readonly' in args:
-        readonly = args['readonly']
-      if 'syntax' in args:
-        syntax = args['syntax']
-      view = core.new_file(context, input.rstrip(), name=name, scratch=scratch, readonly=readonly, syntax=syntax)
-      view.settings().set('context', context)
+    if not input or input.rstrip() == '':
+      return False
 
-    return False
+    name = scratch = readonly = syntax = on_close = None
+    if 'name' in args:
+      name = args['name']
+    if 'scratch' in args:
+      scratch = args['scratch']
+    if 'readonly' in args:
+      readonly = args['readonly']
+    if 'syntax' in args:
+      syntax = args['syntax']
+    if 'on_close' in args:
+      on_close = args['on_close']
+
+    view = core.new_file(context, input.rstrip(), name=name, scratch=scratch, readonly=readonly, syntax=syntax)
+
+    if on_close:
+      on_close_context = dict(context)
+      on_close_context['commands'] = on_close
+      view.settings().set('on_close_context', on_close_context)
 
 class CommandoOpenFileCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):
-    if os.path.exists(input.strip()):
+    if not os.path.exists(input.strip()):
+      return False
+
       view = core.open_file(context, input.strip())
       if view:
-        view.settings().set('context', context)
+        view.settings().set('on_close_context', context)
     return False
+
+class CommandoFileWatcher(sublime_plugin.EventListener):
+  def on_pre_close(self, view):
+    context = view.settings().get('on_close_context')
+    if context:
+      context['input'] = view.substr(sublime.Region(0, view.size()))
+      core.next_commando(context)
 
 class CommandoQuickPanelCommand(plugin.CommandoCmd):
   def cmd(self, context, input, args):#on_done=None):
@@ -255,6 +272,25 @@ class CommandoSplitCommand(plugin.CommandoCmd):
         splits.append(re.split(sep, line, maxsplit=limit))
     return splits
 
+class CommandoLoopCommand(plugin.CommandoCmd):
+  def cmd(self, context, input, args):
+    if not input:
+      return context
+
+    if 'commands' not in args or not args['commands']:
+      return context
+
+    if not isinstance(input, list):
+      input = [input]
+
+    for i in input:
+      loop_context = dict(context)
+      loop_context['input'] = i
+      core.run_commando(list(args['commands']), context=loop_context)
+
+    return False
+
+
 class SimpleInsertCommand(sublime_plugin.TextCommand):
   def run(self, edit, contents):
     self.view.insert(edit, 0, contents)
@@ -334,10 +370,3 @@ class CommandoProcess(threading.Thread):
 
   def exit_code(self):
     return self.proc.poll()
-
-class CommandoNewFileWatcher(sublime_plugin.EventListener):
-  def on_pre_close(self, view):
-    context = view.settings().get('context')
-    if context:
-      context['input'] = view.substr(sublime.Region(0, view.size()))
-      core.next_commando(context)
