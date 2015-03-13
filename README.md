@@ -4,6 +4,8 @@ Commando is a command builder plugin for Sublime Text 3.
 
 # How do I use it?
 
+_(Coming soon: Bundles!)_
+
 A Commando command looks like this:
 
 ```json
