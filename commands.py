@@ -12,6 +12,16 @@ from . import plugin, core
 class CommandoCommand(plugin.CommandoRun):
   pass
 
+class CommandoCallCommandCommand(plugin.CommandoCmd):
+  def cmd(self, context, input, args):
+    if not 'command' in args:
+      return False
+
+    command_type = core.get_command_type(args['command'])
+    runner = core.get_command_runner(context, command_type)
+
+    runner.run_command(args['command'], args)
+
 class CommandoExecCommand(plugin.CommandoCmd):
   """Simplified version of ExecCommand from Default/exec.py that supports chaining."""
   procs    = []
@@ -151,9 +161,9 @@ class CommandoOpenFileCommand(plugin.CommandoCmd):
     if not os.path.exists(input.strip()):
       return False
 
-      view = core.open_file(context, input.strip())
-      if view:
-        view.settings().set('on_close_context', context)
+    view = core.open_file(context, input.strip())
+    if view:
+      view.settings().set('on_close_context', context)
     return False
 
 class CommandoFileWatcher(sublime_plugin.EventListener):
